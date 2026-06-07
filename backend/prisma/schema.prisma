@@ -1,0 +1,234 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  editor
+  viewer
+}
+
+enum GuestLanguage {
+  mixte
+  francais
+  darija
+  adefini
+}
+
+enum ShortPlatform {
+  youtube_shorts
+  instagram_reels
+  tiktok
+  linkedin
+  facebook
+}
+
+enum SponsorType {
+  preroll
+  midroll
+  postroll
+  mention
+  partenaire
+}
+
+enum SponsorStatus {
+  prospect
+  nego
+  confirme
+  paye
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  done
+  cancelled
+}
+
+enum Platform {
+  youtube
+  spotify
+  tiktok
+  instagram
+}
+
+model User {
+  id           Int            @id @default(autoincrement()) @db.UnsignedInt
+  fullname     String         @db.VarChar(255)
+  email        String         @unique @db.VarChar(255)
+  passwordHash String         @map("password_hash") @db.VarChar(255)
+  avatar       String?        @db.VarChar(512)
+  role         UserRole       @default(editor)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  tasks        Task[]         @relation("AssignedTasks")
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model PipelineStage {
+  id       Int     @id @default(autoincrement()) @db.UnsignedInt
+  name     String  @db.VarChar(100)
+  color    String  @default("#8B5CF6") @db.VarChar(7)
+  position Int     @unique
+  guests   Guest[]
+
+  @@map("pipeline_stages")
+}
+
+model Guest {
+  id              Int           @id @default(autoincrement()) @db.UnsignedInt
+  firstName       String        @default("") @map("first_name") @db.VarChar(100)
+  lastName        String        @default("") @map("last_name") @db.VarChar(100)
+  company         String?       @db.VarChar(255)
+  sector          String?       @db.VarChar(255)
+  city            String?       @db.VarChar(100)
+  source          String?       @db.VarChar(255)
+  contact         String?       @db.VarChar(500)
+  language        GuestLanguage @default(adefini)
+  stageId         Int           @map("stage_id") @db.UnsignedInt
+  shootingDate    DateTime?     @map("shooting_date")
+  whyElmaakoul    String?       @map("why_elmaakoul") @db.Text
+  emotionalAngle  String?       @map("emotional_angle") @db.Text
+  notes           String?       @db.Text
+  legacyId        String?       @map("legacy_id") @db.VarChar(50)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  stage           PipelineStage @relation(fields: [stageId], references: [id])
+  interactions    Interaction[]
+  episode         Episode?
+  tasks           Task[]
+
+  @@index([stageId])
+  @@index([shootingDate])
+  @@index([legacyId])
+  @@map("guests")
+}
+
+model Interaction {
+  id        Int      @id @default(autoincrement()) @db.UnsignedInt
+  guestId   Int      @map("guest_id") @db.UnsignedInt
+  note      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  guest     Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([guestId, createdAt(sort: Desc)])
+  @@map("interactions")
+}
+
+model Episode {
+  id                Int       @id @default(autoincrement()) @db.UnsignedInt
+  guestId           Int       @unique @map("guest_id") @db.UnsignedInt
+  episodeNumber     Int?      @map("episode_number")
+  title             String?   @db.VarChar(500)
+  recordingDate     DateTime? @map("recording_date") @db.Date
+  publicationDate   DateTime? @map("publication_date") @db.Date
+  spotifyLink       String?   @map("spotify_link") @db.VarChar(512)
+  youtubeLink       String?   @map("youtube_link") @db.VarChar(512)
+  youtubeEpisodeUrl String?   @map("youtube_episode_url") @db.VarChar(512)
+  spotifyEpisodeUrl String?   @map("spotify_episode_url") @db.VarChar(512)
+  listens           Int       @default(0) @db.UnsignedInt
+  views             Int       @default(0) @db.UnsignedInt
+  shares            Int       @default(0) @db.UnsignedInt
+  completionRate    Decimal?  @map("completion_rate") @db.Decimal(5, 2)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  guest             Guest     @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  shorts            Short[]
+  sponsors          Sponsor[]
+
+  @@map("episodes")
+}
+
+model Short {
+  id          Int           @id @default(autoincrement()) @db.UnsignedInt
+  episodeId   Int           @map("episode_id") @db.UnsignedInt
+  platform    ShortPlatform
+  title       String        @db.VarChar(500)
+  views       Int           @default(0) @db.UnsignedInt
+  likes       Int           @default(0) @db.UnsignedInt
+  shares      Int           @default(0) @db.UnsignedInt
+  url         String        @db.VarChar(512)
+  description String        @db.Text
+  publishedAt DateTime?     @map("published_at")
+  episode     Episode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([episodeId])
+  @@index([platform])
+  @@map("shorts")
+}
+
+model Sponsor {
+  id          Int           @id @default(autoincrement()) @db.UnsignedInt
+  episodeId   Int           @map("episode_id") @db.UnsignedInt
+  name        String        @default("") @db.VarChar(255)
+  sponsorType SponsorType   @default(mention) @map("sponsor_type")
+  amount      Decimal       @default(0) @db.Decimal(12, 2)
+  status      SponsorStatus @default(prospect)
+  notes       String?       @db.Text
+  episode     Episode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([episodeId])
+  @@map("sponsors")
+}
+
+model Task {
+  id          Int        @id @default(autoincrement()) @db.UnsignedInt
+  guestId     Int        @map("guest_id") @db.UnsignedInt
+  assignedTo  Int?       @map("assigned_to") @db.UnsignedInt
+  title       String     @db.VarChar(255)
+  description String?    @db.Text
+  dueDate     DateTime?  @map("due_date") @db.Date
+  status      TaskStatus @default(pending)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  guest       Guest      @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  assignee    User?      @relation("AssignedTasks", fields: [assignedTo], references: [id])
+
+  @@map("tasks")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement()) @db.UnsignedInt
+  userId    Int      @map("user_id") @db.UnsignedInt
+  title     String   @db.VarChar(255)
+  content   String   @db.Text
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model PlatformToken {
+  id            Int       @id @default(autoincrement()) @db.UnsignedInt
+  platform      Platform  @unique
+  accessToken   String    @map("access_token") @db.Text
+  refreshToken  String?   @map("refresh_token") @db.Text
+  expiresAt     DateTime? @map("expires_at")
+  scope         String?   @db.VarChar(512)
+  lastSyncAt    DateTime? @map("last_sync_at")
+  lastSyncError String?   @map("last_sync_error") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("platform_tokens")
+}
+
+model PlatformStat {
+  id          Int      @id @default(autoincrement()) @db.UnsignedInt
+  platform    Platform
+  metricKey   String   @map("metric_key") @db.VarChar(100)
+  metricValue Decimal  @map("metric_value") @db.Decimal(18, 4)
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+
+  @@index([platform, metricKey, recordedAt(sort: Desc)])
+  @@map("platform_stats")
+}

@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#C4522A">
+<title>El Maakoul · CRM</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FAF6EF;color:#1a1a1a;min-height:100vh}
+.app{max-width:1100px;margin:0 auto;padding:0 0 80px}
+
+/* TOPBAR */
+.topbar{background:#C4522A;color:#fff;padding:14px 16px 12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(196,82,42,0.3)}
+.topbar-left{}
+.logo{font-size:17px;font-weight:700}
+.logo em{color:#F5C4B3;font-style:normal}
+.sync-status{font-size:10px;opacity:0.85;margin-top:2px;display:flex;align-items:center;gap:5px}
+.sync-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sync-dot.ok{background:#7EEEC4}
+.sync-dot.saving{background:#FAD27A;animation:pulse 1s infinite}
+.sync-dot.error{background:#FF9494}
+.sync-dot.offline{background:#ccc}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+.topbar-btn{background:rgba(255,255,255,0.2);border:none;border-radius:8px;color:#fff;padding:7px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.topbar-btn:active{opacity:0.7}
+
+/* TABS - desktop */
+.tabs-bar{display:flex;border-bottom:1px solid #e8e0d8;margin:0 16px;background:#FAF6EF}
+.tab{padding:10px 18px;cursor:pointer;font-size:13px;color:#888;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;font-family:inherit}
+.tab.on{color:#C4522A;border-bottom-color:#C4522A;font-weight:500}
+
+/* BOTTOM NAV - mobile */
+.bottomnav{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e5e5;z-index:100}
+@media(max-width:600px){
+  .bottomnav{display:flex}
+  .tabs-bar{display:none}
+  .app{padding-bottom:70px}
+}
+.bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 4px 7px;cursor:pointer;border:none;background:none;font-family:inherit;color:#888;font-size:10px;gap:3px}
+.bnav-item.on{color:#C4522A}
+.bnav-icon{width:20px;height:20px}
+
+/* CONTENT */
+.content{padding:14px 16px 0}
+
+/* BUTTONS */
+.btn{background:transparent;border:1px solid #ccc;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-family:inherit;color:#1a1a1a}
+.btn:hover,.btn:active{background:#f5f0eb}
+.btn-p{background:#C4522A;color:#fff;border-color:#C4522A}
+.btn-p:hover,.btn-p:active{background:#a84323}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-full{width:100%;display:flex;align-items:center;justify-content:center}
+
+/* FORMS */
+.inp{width:100%;border:1px solid #ddd;border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit;background:#fff;color:#1a1a1a;-webkit-appearance:none}
+.inp:focus{outline:none;border-color:#C4522A}
+.sel{border:1px solid #ddd;border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit;background:#fff;color:#1a1a1a;width:100%;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.sel:focus{outline:none;border-color:#C4522A}
+.ta{width:100%;border:1px solid #ddd;border-radius:8px;padding:9px 11px;font-size:13px;font-family:inherit;background:#fff;color:#1a1a1a;resize:vertical;min-height:65px}
+.ta:focus{outline:none;border-color:#C4522A}
+
+/* CARDS */
+.card{background:#fff;border:1px solid #e8e0d8;border-radius:12px;padding:14px;margin-bottom:10px}
+
+/* LABELS */
+.lbl{font-size:11px;color:#888;margin-bottom:4px;margin-top:12px;text-transform:uppercase;letter-spacing:0.04em;font-weight:500}
+.lbl:first-child{margin-top:0}
+.val{font-size:14px;line-height:1.5}
+.badge{display:inline-block;font-size:11px;padding:2px 9px;border-radius:20px;font-weight:500}
+.div{border:none;border-top:1px solid #eee;margin:14px 0}
+.back{display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:#C4522A;background:none;border:none;font-family:inherit;padding:0;margin-bottom:14px;font-weight:500}
+
+/* GRIDS */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px}
+@media(max-width:500px){.g2{grid-template-columns:1fr}.g3{grid-template-columns:1fr 1fr}.g4{grid-template-columns:1fr 1fr}}
+
+/* AVATARS */
+.av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0}
+.av-lg{width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;flex-shrink:0}
+
+/* PIPELINE */
+.pipe{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px}
+.pipe::-webkit-scrollbar{height:5px}
+.pipe::-webkit-scrollbar-thumb{background:#C4522A;border-radius:3px}
+.pcol{min-width:168px;flex:0 0 168px}
+.pch{font-size:10px;font-weight:600;letter-spacing:0.05em;padding:5px 8px;border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.pgc{background:#fff;border:1px solid #e8e0d8;border-radius:8px;padding:10px;margin-bottom:7px;cursor:pointer}
+.pgc:hover{border-color:#C4522A}
+.pnav{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.pnav button{background:#f5f0eb;border:none;border-radius:16px;padding:4px 10px;cursor:pointer;font-size:11px;color:#666;font-family:inherit}
+.pnav button:hover{color:#C4522A}
+
+/* PILLS */
+.pill-nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px;-ms-overflow-style:none;scrollbar-width:none}
+.pill-nav::-webkit-scrollbar{display:none}
+.pill{background:#f5f0eb;border:none;border-radius:20px;padding:5px 13px;font-size:12px;font-family:inherit;color:#666;cursor:pointer;white-space:nowrap}
+.pill.on{background:#C4522A;color:#fff}
+
+/* MISC */
+.tpill{font-size:10px;color:#C4522A;background:#FAECE7;padding:2px 7px;border-radius:20px;display:inline-block;margin-top:4px}
+.met{background:#f7f4f0;border-radius:8px;padding:10px;text-align:center}
+.int{border-left:2px solid #e5e5e5;padding:3px 0 3px 10px;margin-bottom:8px}
+.reach{background:#FAECE7;border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid #F5C4B3}
+.rbar{background:#C4522A;height:5px;border-radius:3px}
+.srow,.sprow{border:1px solid #e5e5e5;border-radius:8px;padding:10px;margin-bottom:8px}
+.stsel{border:1px solid #ddd;border-radius:8px;padding:7px 28px 7px 10px;font-size:13px;font-family:inherit;background:#fff;color:#1a1a1a;cursor:pointer;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+
+/* SETUP SCREEN */
+.setup-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:#FAF6EF}
+.setup-card{background:#fff;border-radius:16px;padding:28px;max-width:500px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.08)}
+.setup-logo{font-size:22px;font-weight:700;margin-bottom:4px}
+.setup-logo em{color:#C4522A;font-style:normal}
+.setup-step{display:flex;gap:10px;margin-bottom:14px;padding:12px;background:#f7f4f0;border-radius:8px;align-items:flex-start}
+.setup-num{width:24px;height:24px;background:#C4522A;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;margin-top:1px}
+.setup-step a{color:#C4522A;font-weight:500}
+
+/* TOAST */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity 0.2s;pointer-events:none;white-space:nowrap;max-width:90vw;text-align:center}
+.toast.show{opacity:1}
+
+/* LOADING */
+.loading{display:flex;align-items:center;justify-content:center;height:200px;color:#888;font-size:14px}
+.spin{width:20px;height:20px;border:2px solid #e8e0d8;border-top-color:#C4522A;border-radius:50%;animation:spin 0.7s linear infinite;margin-right:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="setup-screen" style="display:none">
+  <div class="setup-screen">
+    <div class="setup-card">
+      <div class="setup-logo">EL <em>MA</em>AKOUL</div>
+      <p style="font-size:13px;color:#888;margin-bottom:20px">CRM Podcast · Synchronisation cloud</p>
+
+      <div style="font-size:15px;font-weight:600;margin-bottom:14px">Configuration initiale (5 min)</div>
+
+      <div class="setup-step">
+        <div class="setup-num">1</div>
+        <div style="font-size:13px;line-height:1.5">
+          Créez un compte gratuit sur <a href="https://jsonbin.io" target="_blank">jsonbin.io</a><br>
+          <span style="color:#888;font-size:12px">Cliquez "Sign Up" en haut à droite</span>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-num">2</div>
+        <div style="font-size:13px;line-height:1.5">
+          Dans votre dashboard → <b>API Keys</b> → copiez votre <b>Master Key</b><br>
+          <span style="color:#888;font-size:12px">Format : $2a$10$xxxx...</span>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-num">3</div>
+        <div style="font-size:13px;line-height:1.5">
+          Collez la clé ci-dessous et cliquez Démarrer<br>
+          <span style="color:#888;font-size:12px">Un espace de stockage sera créé automatiquement</span>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div class="lbl" style="margin-top:0">Votre Master Key JSONBin</div>
+        <input class="inp" id="setup-key" placeholder="$2a$10$..." type="password">
+      </div>
+      <div id="setup-err" style="font-size:12px;color:#C4522A;margin-bottom:10px;display:none"></div>
+      <button class="btn btn-p btn-full" id="setup-btn" onclick="doSetup()">Démarrer la synchronisation →</button>
+
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid #eee;text-align:center">
+        <button class="btn btn-sm" onclick="useOffline()" style="color:#888;border:none;font-size:12px">Utiliser sans synchronisation (données locales uniquement)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="main-app" style="display:none">
+  <div class="app">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="logo">EL <em>MA</em>AKOUL</div>
+        <div class="sync-status" id="sync-status">
+          <span class="sync-dot offline" id="sync-dot"></span>
+          <span id="sync-text">Connexion...</span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="topbar-btn" onclick="elNew('idee')" style="font-size:18px;padding:5px 10px">+</button>
+      </div>
+    </div>
+
+    <div class="tabs-bar">
+      <button class="tab on" data-tab="pipeline" onclick="switchTab('pipeline')">Pipeline</button>
+      <button class="tab" data-tab="episodes" onclick="switchTab('episodes')">Épisodes</button>
+      <button class="tab" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+    </div>
+
+    <div class="content" id="content">
+      <div class="loading"><div class="spin"></div>Chargement depuis le cloud...</div>
+    </div>
+  </div>
+
+  <nav class="bottomnav">
+    <button class="bnav-item on" data-tab="pipeline" onclick="switchTab('pipeline')">
+      <svg class="bnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="8" width="5" height="13" rx="1"/><rect x="17" y="5" width="5" height="16" rx="1"/></svg>Pipeline
+    </button>
+    <button class="bnav-item" data-tab="episodes" onclick="switchTab('episodes')">
+      <svg class="bnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none"/></svg>Épisodes
+    </button>
+    <button class="bnav-item" data-tab="dashboard" onclick="switchTab('dashboard')">
+      <svg class="bnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l4-4 4 4 5-6 5 6"/><path d="M3 20h18"/></svg>Dashboard
+    </button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ==================== CONFIG ====================
+const ST=[{key:'idee',label:'Idée',bg:'#F1EFE8',col:'#444441',dot:'#888780'},{key:'contacte',label:'Contacté',bg:'#E6F1FB',col:'#0C447C',dot:'#378ADD'},{key:'discussion',label:'En discussion',bg:'#FAEEDA',col:'#633806',dot:'#BA7517'},{key:'confirme',label:'Confirmé',bg:'#E1F5EE',col:'#085041',dot:'#1D9E75'},{key:'enregistre',label:'Enregistré',bg:'#EEEDFE',col:'#3C3489',dot:'#7F77DD'},{key:'publie',label:'Publié',bg:'#EAF3DE',col:'#27500A',dot:'#639922'}];
+const LANGUES=[{key:'mixte',label:'Darija / Français'},{key:'francais',label:'Français'},{key:'darija',label:'Darija'},{key:'adefini',label:'À définir'}];
+const PLAT=[{key:'yt_shorts',label:'YouTube Shorts',c:'#FF0000'},{key:'instagram',label:'Instagram Reels',c:'#E1306C'},{key:'tiktok',label:'TikTok',c:'#555'},{key:'linkedin',label:'LinkedIn',c:'#0077B5'},{key:'facebook',label:'Facebook',c:'#1877F2'}];
+const SPT=[{key:'preroll',label:'Pré-roll'},{key:'midroll',label:'Mid-roll'},{key:'postroll',label:'Post-roll'},{key:'mention',label:'Mention'},{key:'partenaire',label:'Partenaire'}];
+const SPS=[{key:'prospect',label:'Prospect'},{key:'nego',label:'En négociation'},{key:'confirme',label:'Confirmé'},{key:'paye',label:'Payé'}];
+const SPSC={prospect:'#F1EFE8',nego:'#FAEEDA',confirme:'#E1F5EE',paye:'#EAF3DE'};
+const SPTC={prospect:'#444',nego:'#633806',confirme:'#085041',paye:'#27500A'};
+
+// ==================== STATE ====================
+let S={tab:'pipeline',view:'pipeline',sel:null,ns:'idee',flt:'all'};
+let G=[];
+let CFG={apiKey:'',binId:'',offline:false};
+let saveTimer=null;
+let lastSaveTime=null;
+
+// ==================== STORAGE ====================
+function cfgSave(){localStorage.setItem('em-cfg',JSON.stringify(CFG));}
+function cfgLoad(){try{const d=localStorage.getItem('em-cfg');if(d)CFG=JSON.parse(d);}catch(e){}}
+
+// ==================== JSONBIN API ====================
+const BIN_BASE='https://api.jsonbin.io/v3';
+
+async function binCreate(apiKey){
+  const resp=await fetch(`${BIN_BASE}/b`,{method:'POST',headers:{'Content-Type':'application/json','X-Master-Key':apiKey,'X-Bin-Name':'ElMaakoul-CRM','X-Collection-Name':'ElMaakoul'},body:JSON.stringify({guests:[],createdAt:new Date().toISOString()})});
+  if(!resp.ok)throw new Error('Création impossible — vérifiez votre clé API');
+  const d=await resp.json();return d.metadata.id;
+}
+
+async function binRead(){
+  if(CFG.offline)return null;
+  const resp=await fetch(`${BIN_BASE}/b/${CFG.binId}/latest`,{headers:{'X-Master-Key':CFG.apiKey}});
+  if(!resp.ok)throw new Error('Lecture impossible');
+  const d=await resp.json();return d.record;
+}
+
+async function binWrite(data){
+  if(CFG.offline)return;
+  const resp=await fetch(`${BIN_BASE}/b/${CFG.binId}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':CFG.apiKey},body:JSON.stringify(data)});
+  if(!resp.ok)throw new Error('Écriture impossible');
+  return await resp.json();
+}
+
+// ==================== SYNC ====================
+function setSyncStatus(status,text){
+  const dot=document.getElementById('sync-dot');
+  const txt=document.getElementById('sync-text');
+  if(!dot||!txt)return;
+  dot.className='sync-dot '+status;
+  txt.textContent=text;
+}
+
+function scheduleSave(){
+  if(saveTimer)clearTimeout(saveTimer);
+  setSyncStatus('saving','Sauvegarde...');
+  saveTimer=setTimeout(()=>doSave(),1200);
+}
+
+async function doSave(){
+  if(CFG.offline){localStorage.setItem('em-guests-offline',JSON.stringify(G));setSyncStatus('offline','Mode hors-ligne');return;}
+  try{
+    await binWrite({guests:G,updatedAt:new Date().toISOString()});
+    lastSaveTime=new Date();
+    setSyncStatus('ok','Synchronisé · '+lastSaveTime.toLocaleTimeString('fr-MA',{hour:'2-digit',minute:'2-digit'}));
+  }catch(e){
+    setSyncStatus('error','Erreur sync');
+    toast('⚠ Erreur de sauvegarde — vérifiez votre connexion',3000);
+  }
+}
+
+async function doLoad(){
+  if(CFG.offline){
+    try{const d=localStorage.getItem('em-guests-offline');if(d)G=JSON.parse(d);}catch(e){G=[];}
+    setSyncStatus('offline','Mode hors-ligne');return;
+  }
+  try{
+    setSyncStatus('saving','Chargement...');
+    const data=await binRead();
+    G=(data&&data.guests)?data.guests:[];
+    normalize();
+    if(!G.length)seedDemo();
+    setSyncStatus('ok','Synchronisé');
+  }catch(e){
+    setSyncStatus('error','Erreur — mode local');
+    try{const d=localStorage.getItem('em-guests-offline');if(d)G=JSON.parse(d);}catch(e2){G=[];}
+    toast('⚠ Cloud inaccessible — données locales utilisées',3000);
+  }
+}
+
+// ==================== SETUP ====================
+window.doSetup=async function(){
+  const key=document.getElementById('setup-key').value.trim();
+  const err=document.getElementById('setup-err');
+  const btn=document.getElementById('setup-btn');
+  if(!key){err.textContent='Veuillez saisir votre Master Key';err.style.display='block';return;}
+  btn.textContent='Connexion en cours...';btn.disabled=true;err.style.display='none';
+  try{
+    const binId=await binCreate(key);
+    CFG={apiKey:key,binId:binId,offline:false};
+    cfgSave();
+    startApp();
+  }catch(e){
+    err.textContent=e.message||'Clé invalide ou connexion impossible';
+    err.style.display='block';
+    btn.textContent='Démarrer la synchronisation →';btn.disabled=false;
+  }
+};
+
+window.useOffline=function(){
+  CFG={apiKey:'',binId:'',offline:true};
+  cfgSave();
+  startApp();
+};
+
+// ==================== APP INIT ====================
+function normalize(){G.forEach(g=>{if(!g.langue)g.langue='adefini';if(!g.dateTournage)g.dateTournage='';if(!g.episode)g.episode={};if(!g.episode.shorts)g.episode.shorts=[];if(!g.episode.sponsors)g.episode.sponsors=[];});}
+function seedDemo(){G.push({id:uid(),prenom:'Tarik',nom:'Lallouch',entreprise:'Akenoo / Sindiprint / Woolpi',secteur:'Industrie / Impression / IA',ville:'Casablanca',source:'CJD Maroc',contact:'',stade:'confirme',langue:'mixte',dateTournage:'',pourquoi:'Fondateur multi-entreprises, président GMI Maroc, pivot vers IA.',angleEmotionnel:'Transmission père-fils : grandi dans l\'imprimerie du père à Meknès.',notes:'Alerte orateur public — utiliser l\'angle père/origine très tôt.',dateAjout:new Date(Date.now()-10*864e5).toISOString(),interactions:[{date:new Date(Date.now()-7*864e5).toISOString(),note:'Premier contact via CJD. Enthousiaste.'},{date:new Date(Date.now()-2*864e5).toISOString(),note:'Accord confirmé pour le pilote.'}],episode:{numero:1,titre:'',dateEnregistrement:'',datePublication:'',spotifyLink:'',youtubeLink:'',ecoutes:0,vues:0,partages:0,completion:null,shorts:[],sponsors:[]}});}
+
+async function startApp(){
+  document.getElementById('setup-screen').style.display='none';
+  document.getElementById('main-app').style.display='block';
+  await doLoad();
+  render();
+}
+
+(function boot(){
+  cfgLoad();
+  if(CFG.binId||CFG.offline){startApp();}
+  else{document.getElementById('setup-screen').style.display='flex';}
+})();
+
+// ==================== HELPERS ====================
+function uid(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5);}
+function sg(k){return ST.find(s=>s.key===k)||ST[0];}
+function fd(i){if(!i)return '';return new Date(i).toLocaleDateString('fr-MA',{day:'2-digit',month:'short',year:'numeric'});}
+function fdt(i){if(!i)return '';const d=new Date(i);return d.toLocaleDateString('fr-MA',{weekday:'short',day:'2-digit',month:'short'})+' '+String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');}
+function fl(k){return(LANGUES.find(l=>l.key===k)||LANGUES[3]).label;}
+function fp(k){return(PLAT.find(p=>p.key===k)||{label:k}).label;}
+function ini(g){return(((g.prenom||'')[0]||'')+((g.nom||'')[0]||'')).toUpperCase()||'?';}
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function dtl(i){if(!i)return '';const d=new Date(i);const p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
+function lopts(s){return LANGUES.map(l=>`<option value="${l.key}"${l.key===(s||'adefini')?' selected':''}>${l.label}</option>`).join('');}
+function sopts(s){return ST.map(x=>`<option value="${x.key}"${x.key===s?' selected':''}>${x.label}</option>`).join('');}
+function tr(ep){if(!ep)return 0;let t=(ep.ecoutes||0)+(ep.vues||0);(ep.shorts||[]).forEach(s=>t+=(s.views||0));return t;}
+function rv(ep){if(!ep)return 0;return(ep.sponsors||[]).reduce((s,x)=>s+(x.montant||0),0);}
+function C(){return document.getElementById('content');}
+function vv(id){const el=document.getElementById(id);return el?(el.value||'').trim():'';}
+function toast(msg,dur=2200){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
+
+function persist(){normalize();scheduleSave();}
+
+// ==================== TAB SWITCH ====================
+window.switchTab=function(tab){
+  S.tab=tab;S.view=tab;S.sel=null;
+  document.querySelectorAll('.tab,[data-tab]').forEach(b=>{
+    if(b.dataset.tab)b.classList.toggle('on',b.dataset.tab===tab);
+  });
+  render();
+};
+
+// ==================== PIPELINE ====================
+function renderPipeline(){
+  const flt=S.flt==='all'?G:G.filter(g=>g.stade===S.flt);
+  const pills=`<div class="pill-nav">${[{key:'all',label:'Tous ('+G.length+')'}].concat(ST.map(s=>({key:s.key,label:s.label+' ('+G.filter(g=>g.stade===s.key).length+')'}))).map(p=>`<button class="pill${S.flt===p.key?' on':''}" onclick="setFlt('${p.key}')">${p.label}</button>`).join('')}</div>`;
+  if(window.innerWidth<=600){
+    const cards=flt.map(g=>{const s=sg(g.stade);return`<div class="card" onclick="elSel('${g.id}')" style="cursor:pointer;display:flex;align-items:center;gap:10px"><div class="av" style="background:${s.bg};color:${s.col}">${ini(g)}</div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.prenom)} ${esc(g.nom)}</div><div style="font-size:12px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.entreprise||'')}</div><div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap"><span class="badge" style="background:${s.bg};color:${s.col};font-size:10px">${s.label}</span>${g.dateTournage?`<span class="tpill" style="font-size:10px;margin-top:0">${fdt(g.dateTournage)}</span>`:''}</div></div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>`;}).join('')||'<div style="text-align:center;padding:2rem;color:#888">Aucun invité</div>';
+    C().innerHTML=pills+cards;return;
+  }
+  const by={};ST.forEach(s=>by[s.key]=[]);G.forEach(g=>{if(by[g.stade])by[g.stade].push(g);});
+  const cols=ST.map(s=>{
+    const items=by[s.key];
+    const cards=items.map(g=>`<div class="pgc" onclick="elSel('${g.id}')"><div style="display:flex;align-items:center;gap:7px;margin-bottom:5px"><div class="av" style="background:${s.bg};color:${s.col}">${ini(g)}</div><div style="min-width:0"><div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(g.prenom)} ${esc(g.nom)}</div><div style="font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(g.entreprise||'')}</div></div></div>${g.langue&&g.langue!=='adefini'?`<span class="badge" style="background:#F1EFE8;color:#5F5E5A;font-size:10px">${fl(g.langue)}</span>`:''}${g.dateTournage?`<div class="tpill">${fdt(g.dateTournage)}</div>`:''}${!g.dateTournage&&g.interactions&&g.interactions.length?`<div style="font-size:10px;color:#888;margin-top:3px">Contact: ${fd(g.interactions[g.interactions.length-1].date)}</div>`:''}${g.stade==='publie'&&g.episode?`<div style="font-size:10px;color:#085041;margin-top:2px">Portée: ${tr(g.episode).toLocaleString('fr')}</div>`:''}</div>`).join('');
+    return`<div class="pcol"><div class="pch" style="background:${s.bg};color:${s.col}"><span>${s.label.toUpperCase()}</span><span style="background:rgba(0,0,0,0.12);border-radius:10px;padding:1px 6px;font-size:9px">${items.length}</span></div>${cards}<div onclick="elNew('${s.key}')" style="cursor:pointer;font-size:11px;color:#888;padding:5px;text-align:center;border:1px dashed #ddd;border-radius:8px;margin-top:2px">+ ajouter</div></div>`;
+  }).join('');
+  C().innerHTML=`${pills}<div class="pipe" id="pipe">${cols}</div><div class="pnav"><button onclick="document.getElementById('pipe').scrollBy({left:-190,behavior:'smooth'})">← Préc.</button>${ST.map(s=>`<button onclick="document.getElementById('pipe').scrollTo({left:${ST.indexOf(s)*178},behavior:'smooth'})">${s.label}</button>`).join('')}<button onclick="document.getElementById('pipe').scrollBy({left:190,behavior:'smooth'})">Suiv. →</button></div>`;
+}
+window.setFlt=function(k){S.flt=k;render();};
+
+// ==================== SHORTS & SPONSORS ====================
+function renderShorts(g){
+  const ep=g.episode||{},sh=ep.shorts||[],tv=sh.reduce((s,x)=>s+(x.views||0),0);
+  const rows=sh.map(x=>{const pl=PLAT.find(p=>p.key===x.platform)||{label:x.platform,c:'#888'};return`<div class="srow"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span class="badge" style="background:${pl.c}20;color:${pl.c}">${pl.label}</span><button class="btn btn-sm" onclick="delShort('${g.id}','${x.id}')" style="font-size:11px">✕</button></div><input class="inp" style="margin-bottom:8px" value="${esc(x.titre||'')}" placeholder="Titre" onchange="updShort('${g.id}','${x.id}','titre',this.value)"><div class="g3"><div><div class="lbl" style="margin-top:0">Vues</div><input class="inp" type="number" value="${x.views||''}" onchange="updShort('${g.id}','${x.id}','views',this.value)"></div><div><div class="lbl" style="margin-top:0">Likes</div><input class="inp" type="number" value="${x.likes||''}" onchange="updShort('${g.id}','${x.id}','likes',this.value)"></div><div><div class="lbl" style="margin-top:0">Parts.</div><input class="inp" type="number" value="${x.partages||''}" onchange="updShort('${g.id}','${x.id}','partages',this.value)"></div></div></div>`;}).join('');
+  return`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:14px;font-weight:500">Shorts & Clips</div>${tv?`<span style="font-size:12px;color:#888">${tv.toLocaleString('fr')} vues</span>`:''}</div>${rows||'<div style="font-size:12px;color:#888;margin-bottom:10px">Aucun short</div>'}<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${PLAT.map(p=>`<button class="btn btn-sm" onclick="addShort('${g.id}','${p.key}')" style="color:${p.c};border-color:${p.c}44">+ ${p.label}</button>`).join('')}</div></div>`;
+}
+function renderSponsors(g){
+  const ep=g.episode||{},sp=ep.sponsors||[],rvv=rv(ep);
+  const rows=sp.map(x=>`<div class="sprow"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span class="badge" style="background:${SPSC[x.statut]||'#eee'};color:${SPTC[x.statut]||'#444'}">${(SPS.find(s=>s.key===x.statut)||{label:x.statut}).label}</span><button class="btn btn-sm" onclick="delSponsor('${g.id}','${x.id}')" style="font-size:11px">✕</button></div><input class="inp" style="margin-bottom:8px" value="${esc(x.nom||'')}" placeholder="Nom du sponsor" onchange="updSpo('${g.id}','${x.id}','nom',this.value)"><div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Type</div><select class="sel" onchange="updSpo('${g.id}','${x.id}','type',this.value)">${SPT.map(t=>`<option value="${t.key}"${x.type===t.key?' selected':''}>${t.label}</option>`).join('')}</select></div><div><div class="lbl" style="margin-top:0">Statut</div><select class="sel" onchange="updSpo('${g.id}','${x.id}','statut',this.value)">${SPS.map(t=>`<option value="${t.key}"${x.statut===t.key?' selected':''}>${t.label}</option>`).join('')}</select></div></div><div><div class="lbl" style="margin-top:0">Montant (MAD)</div><input class="inp" type="number" value="${x.montant||''}" onchange="updSpo('${g.id}','${x.id}','montant',this.value)"></div></div>`).join('');
+  return`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:14px;font-weight:500">Sponsors</div>${rvv?`<span style="font-size:13px;font-weight:500;color:#085041">${rvv.toLocaleString('fr')} MAD</span>`:''}</div>${rows||'<div style="font-size:12px;color:#888;margin-bottom:10px">Aucun sponsor</div>'}<button class="btn btn-p btn-sm" onclick="addSponsor('${g.id}')" style="margin-top:4px">+ Ajouter</button></div>`;
+}
+
+// ==================== GUEST VIEW ====================
+function renderGuest(){
+  const g=G.find(x=>x.id===S.sel);if(!g){S.view='pipeline';render();return;}
+  const s=sg(g.stade),ep=g.episode||{},isP=g.stade==='publie',isER=g.stade==='enregistre'||g.stade==='confirme',t=tr(ep),rvv=rv(ep);
+  const ints=(g.interactions||[]).slice().reverse().map(i=>`<div class="int"><div style="font-size:11px;color:#888;margin-bottom:1px">${fd(i.date)}</div><div style="font-size:13px">${esc(i.note)}</div></div>`).join('')||'<div style="font-size:12px;color:#888">Aucune interaction</div>';
+  const reachHTML=isP&&t?`<div class="reach"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-size:12px;font-weight:500;color:#993C1D">Portée totale (D30)</div><div style="font-size:24px;font-weight:700;color:#C4522A">${t.toLocaleString('fr')}</div></div>${[{label:'Écoutes',val:ep.ecoutes||0},{label:'Vues YouTube',val:ep.vues||0},...(ep.shorts||[]).map(sh=>({label:fp(sh.platform),val:sh.views||0}))].filter(x=>x.val>0).map(x=>{const pct=t?Math.round(x.val/t*100):0;return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><div style="font-size:11px;color:#712B13;width:110px;flex-shrink:0">${x.label}</div><div style="flex:1;height:5px;background:#F5C4B3;border-radius:3px"><div class="rbar" style="width:${pct}%"></div></div><div style="font-size:11px;font-weight:500;color:#712B13;min-width:44px;text-align:right">${x.val.toLocaleString('fr')}</div></div>`;}).join('')}${rvv?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #F5C4B3;font-size:12px;color:#993C1D">Sponsoring : <b>${rvv.toLocaleString('fr')} MAD</b></div>`:''}</div>`:'';
+  C().innerHTML=`<button class="back" onclick="elBack()">← Retour</button>
+  <div class="card">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="av-lg" style="background:${s.bg};color:${s.col}">${ini(g)}</div>
+        <div><div style="font-size:19px;font-weight:700">${esc(g.prenom)} ${esc(g.nom)}</div><div style="font-size:13px;color:#888">${esc(g.entreprise||'')}${g.ville?' · '+esc(g.ville):''}</div></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div><div class="lbl" style="margin-top:0;font-size:10px">Stade</div><select class="stsel" onchange="chStade('${g.id}',this.value)">${sopts(g.stade)}</select></div>
+        <button class="btn btn-sm" onclick="elEdit('${g.id}')">Modifier</button>
+        <button class="btn btn-sm" onclick="elDel('${g.id}')" style="color:#888">Supprimer</button>
+      </div>
+    </div>
+  </div>
+  ${reachHTML}
+  <div class="g2">
+    <div>
+      <div class="card">
+        <div style="font-size:14px;font-weight:500;margin-bottom:10px">Profil</div>
+        ${g.secteur?`<div class="lbl">Secteur</div><div class="val">${esc(g.secteur)}</div>`:''}
+        ${g.langue?`<div class="lbl">Langue</div><span class="badge" style="background:#F1EFE8;color:#444">${fl(g.langue)}</span>`:''}
+        ${g.source?`<div class="lbl">Source</div><div class="val">${esc(g.source)}</div>`:''}
+        ${g.contact?`<div class="lbl">Contact</div><div class="val">${esc(g.contact)}</div>`:''}
+        ${g.pourquoi?`<div class="lbl">Pourquoi El Maakoul</div><div class="val">${esc(g.pourquoi)}</div>`:''}
+        ${g.angleEmotionnel?`<div class="lbl">Angle émotionnel</div><div class="val" style="color:#C4522A;font-weight:500">${esc(g.angleEmotionnel)}</div>`:''}
+        ${g.notes?`<div class="lbl">Notes / alertes</div><div class="val">${esc(g.notes)}</div>`:''}
+      </div>
+      ${isER||isP?`<div class="card">
+        <div style="font-size:14px;font-weight:500;margin-bottom:10px">Tournage & épisode</div>
+        ${g.dateTournage?`<div style="background:#FAEEDA;border-radius:8px;padding:10px;margin-bottom:10px"><div style="font-size:11px;color:#633806;margin-bottom:2px">Créneau prévu</div><div style="font-size:14px;font-weight:600;color:#412402">${fdt(g.dateTournage)}</div></div>`:''}
+        <div class="lbl" style="margin-top:0">Créneau</div><input class="inp" style="margin-bottom:8px" id="ep-to" type="datetime-local" value="${dtl(g.dateTournage)}">
+        <div class="lbl">Titre</div><input class="inp" style="margin-bottom:8px" id="ep-ti" value="${esc(ep.titre||'')}" placeholder="Titre de l'épisode">
+        <div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Numéro</div><input class="inp" id="ep-nu" type="number" value="${ep.numero||''}" placeholder="#"></div><div><div class="lbl" style="margin-top:0">Date enreg.</div><input class="inp" id="ep-dr" type="date" value="${ep.dateEnregistrement||''}"></div></div>
+        <div style="text-align:right"><button class="btn btn-p btn-sm" onclick="saveEpData('${g.id}')">Enregistrer</button></div>
+      </div>`:''}
+      ${isP?`<div class="card">
+        <div style="font-size:14px;font-weight:500;margin-bottom:10px">Métriques podcast</div>
+        <div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Écoutes (D30)</div><input class="inp" id="ep-ec" type="number" value="${ep.ecoutes||''}" placeholder="0"></div><div><div class="lbl" style="margin-top:0">Vues YouTube</div><input class="inp" id="ep-vu" type="number" value="${ep.vues||''}" placeholder="0"></div></div>
+        <div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Partages</div><input class="inp" id="ep-pa" type="number" value="${ep.partages||''}" placeholder="0"></div><div><div class="lbl" style="margin-top:0">Complétion %</div><input class="inp" id="ep-co" type="number" value="${ep.completion||''}" placeholder="68"></div></div>
+        <div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Date publication</div><input class="inp" id="ep-dp" type="date" value="${ep.datePublication||''}"></div><div><div class="lbl" style="margin-top:0">Spotify</div><input class="inp" id="ep-sp" value="${esc(ep.spotifyLink||'')}" placeholder="https://..."></div></div>
+        <div><div class="lbl" style="margin-top:0">YouTube</div><input class="inp" style="margin-bottom:10px" id="ep-yt" value="${esc(ep.youtubeLink||'')}" placeholder="https://..."></div>
+        <div style="text-align:right"><button class="btn btn-p btn-sm" onclick="saveMet('${g.id}')">Sauvegarder</button></div>
+      </div>`:''}
+    </div>
+    <div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:14px;font-weight:500">Journal des interactions</div><button class="btn btn-p btn-sm" onclick="togInt()">+ Note</button></div>
+        <div id="intf" style="display:none;margin-bottom:12px"><textarea class="ta" id="intt" placeholder="Note, relance, prochain pas..."></textarea><div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end"><button class="btn btn-sm" onclick="cancInt()">Annuler</button><button class="btn btn-p btn-sm" onclick="saveInt('${g.id}')">Ajouter</button></div></div>
+        ${ints}
+      </div>
+      ${isP?renderShorts(g):''}
+      ${isP?renderSponsors(g):''}
+    </div>
+  </div>`;
+}
+
+// ==================== FORMS ====================
+function fform(g){g=g||{};return`<div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Prénom</div><input class="inp" id="fp" value="${esc(g.prenom||'')}" placeholder="Prénom"></div><div><div class="lbl" style="margin-top:0">Nom</div><input class="inp" id="fn" value="${esc(g.nom||'')}" placeholder="Nom"></div></div><div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Entreprise</div><input class="inp" id="fe" value="${esc(g.entreprise||'')}"></div><div><div class="lbl" style="margin-top:0">Secteur</div><input class="inp" id="fs" value="${esc(g.secteur||'')}"></div></div><div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Ville</div><input class="inp" id="fv" value="${esc(g.ville||'')}"></div><div><div class="lbl" style="margin-top:0">Source / Réseau</div><input class="inp" id="fr" value="${esc(g.source||'')}"></div></div><div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Contact</div><input class="inp" id="fc" value="${esc(g.contact||'')}"></div><div><div class="lbl" style="margin-top:0">Langue</div><select class="sel" id="fl">${lopts(g.langue)}</select></div></div><div class="g2" style="margin-bottom:8px"><div><div class="lbl" style="margin-top:0">Stade</div><select class="sel" id="fst">${sopts(g.stade||S.ns||'idee')}</select></div><div><div class="lbl" style="margin-top:0">Créneau tournage</div><input class="inp" id="ft" type="datetime-local" value="${dtl(g.dateTournage)}"></div></div><div class="div"></div><div style="margin-bottom:8px"><div class="lbl" style="margin-top:0">Pourquoi El Maakoul</div><textarea class="ta" id="fpq">${esc(g.pourquoi||'')}</textarea></div><div style="margin-bottom:8px"><div class="lbl" style="margin-top:0">Angle émotionnel</div><textarea class="ta" id="fan">${esc(g.angleEmotionnel||'')}</textarea></div><div style="margin-bottom:1rem"><div class="lbl" style="margin-top:0">Notes / alertes</div><textarea class="ta" id="fno">${esc(g.notes||'')}</textarea></div>`;}
+function rfg(b){const dt=document.getElementById('ft').value;return Object.assign({},b,{prenom:vv('fp'),nom:vv('fn'),entreprise:vv('fe'),secteur:vv('fs'),ville:vv('fv'),source:vv('fr'),contact:vv('fc'),langue:document.getElementById('fl').value,stade:document.getElementById('fst').value,dateTournage:dt?new Date(dt).toISOString():'',pourquoi:vv('fpq'),angleEmotionnel:vv('fan'),notes:vv('fno')});}
+function renderNew(){C().innerHTML=`<button class="back" onclick="elBack()">← Retour</button><div class="card" style="max-width:680px"><div style="font-size:15px;font-weight:600;margin-bottom:1.25rem">Nouvel invité potentiel</div>${fform()}<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="elBack()">Annuler</button><button class="btn btn-p" onclick="saveNew()">Créer</button></div></div>`;}
+function renderEdit(){const g=G.find(x=>x.id===S.sel);if(!g)return;C().innerHTML=`<button class="back" onclick="cancEdit()">← Annuler</button><div class="card" style="max-width:680px"><div style="font-size:15px;font-weight:600;margin-bottom:1.25rem">Modifier · ${esc(g.prenom)} ${esc(g.nom)}</div>${fform(g)}<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="cancEdit()">Annuler</button><button class="btn btn-p" onclick="saveEdit('${g.id}')">Sauvegarder</button></div></div>`;}
+
+// ==================== EPISODES ====================
+function renderEpisodes(){
+  const pub=G.filter(g=>g.stade==='publie'||g.stade==='enregistre');
+  if(!pub.length){C().innerHTML=`<div style="text-align:center;padding:3rem;color:#888">Aucun épisode</div>`;return;}
+  C().innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px">${pub.sort((a,b)=>((a.episode&&a.episode.numero)||999)-((b.episode&&b.episode.numero)||999)).map(g=>{const s=sg(g.stade),ep=g.episode||{},t=tr(ep),rvv=rv(ep),shV=(ep.shorts||[]).reduce((x,s)=>x+(s.views||0),0);return`<div class="card" onclick="elSel('${g.id}')" style="cursor:pointer"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div class="av" style="background:${s.bg};color:${s.col}">${ini(g)}</div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ep.titre||g.prenom+' '+g.nom)}</div><div style="font-size:11px;color:#888">${esc(g.entreprise||'')}${g.langue?' · '+fl(g.langue):''}</div></div>${ep.numero?`<div style="font-size:18px;font-weight:700;color:#C4522A">#${ep.numero}</div>`:''}</div>${t?`<div style="background:#FAECE7;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between"><div style="font-size:11px;color:#993C1D">Portée totale</div><div style="font-size:18px;font-weight:700;color:#C4522A">${t.toLocaleString('fr')}</div></div>`:''}<div class="g3"><div class="met"><div style="font-size:10px;color:#888">Écoutes</div><div style="font-size:16px;font-weight:600">${ep.ecoutes?ep.ecoutes.toLocaleString('fr'):'—'}</div></div><div class="met"><div style="font-size:10px;color:#888">YouTube</div><div style="font-size:16px;font-weight:600">${ep.vues?ep.vues.toLocaleString('fr'):'—'}</div></div><div class="met"><div style="font-size:10px;color:#888">Shorts</div><div style="font-size:16px;font-weight:600">${shV?shV.toLocaleString('fr'):'—'}</div></div></div>${rvv?`<div style="font-size:12px;color:#085041;font-weight:600;margin-top:8px">Sponsoring : ${rvv.toLocaleString('fr')} MAD</div>`:''}</div>`;}).join('')}</div>`;
+}
+
+// ==================== DASHBOARD ====================
+function renderDashboard(){
+  const tot=G.length,by={};ST.forEach(s=>by[s.key]=0);G.forEach(g=>{if(by[g.stade]!==undefined)by[g.stade]++;});
+  const pub=G.filter(g=>g.stade==='publie'),totT=pub.reduce((s,g)=>s+tr(g.episode),0),totR=pub.reduce((s,g)=>s+rv(g.episode),0);
+  const proch=G.filter(g=>g.dateTournage).sort((a,b)=>new Date(a.dateTournage)-new Date(b.dateTournage)).slice(0,4);
+  const bars=ST.map(s=>{const n=by[s.key],pct=tot?Math.round(n/tot*100):0;return`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="font-size:13px;width:110px;flex-shrink:0">${s.label}</div><div style="flex:1;height:7px;background:#f5f0eb;border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${s.dot};border-radius:4px"></div></div><div style="font-size:13px;font-weight:600;width:22px;text-align:right">${n}</div></div>`;}).join('');
+  const prochH=proch.length?proch.map(g=>{const s=sg(g.stade);return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer" onclick="elSel('${g.id}')"><div class="av" style="background:${s.bg};color:${s.col}">${ini(g)}</div><div><div style="font-size:13px;font-weight:500">${esc(g.prenom)} ${esc(g.nom)}</div><div style="font-size:11px;color:#C4522A;font-weight:500">${fdt(g.dateTournage)}</div></div></div>`;}).join(''):'<div style="font-size:12px;color:#888">Aucun tournage planifié</div>';
+  C().innerHTML=`<div class="g4" style="margin-bottom:1rem"><div class="met"><div style="font-size:11px;color:#888;margin-bottom:4px">Pipeline</div><div style="font-size:24px;font-weight:700">${tot}</div></div><div class="met"><div style="font-size:11px;color:#888;margin-bottom:4px">Publiés</div><div style="font-size:24px;font-weight:700">${pub.length}</div></div><div class="met"><div style="font-size:11px;color:#888;margin-bottom:4px">Portée cumulée</div><div style="font-size:24px;font-weight:700;color:#C4522A">${totT?totT.toLocaleString('fr'):'—'}</div></div><div class="met"><div style="font-size:11px;color:#888;margin-bottom:4px">Sponsoring</div><div style="font-size:24px;font-weight:700;color:#085041">${totR?totR.toLocaleString('fr')+' MAD':'—'}</div></div></div><div class="g2"><div class="card"><div style="font-size:14px;font-weight:500;margin-bottom:12px">Répartition pipeline</div>${bars}</div><div class="card"><div style="font-size:14px;font-weight:500;margin-bottom:12px">Tournages planifiés</div>${prochH}</div></div>`;
+}
+
+// ==================== RENDER ====================
+function render(){
+  if(S.view==='guest')renderGuest();
+  else if(S.view==='new')renderNew();
+  else if(S.view==='edit')renderEdit();
+  else if(S.tab==='episodes')renderEpisodes();
+  else if(S.tab==='dashboard')renderDashboard();
+  else renderPipeline();
+}
+
+// ==================== ACTIONS ====================
+window.elSel=function(id){S.view='guest';S.sel=id;render();};
+window.elBack=function(){S.view=S.tab;S.sel=null;render();};
+window.elNew=function(st){S.view='new';S.ns=st||'idee';render();};
+window.elEdit=function(id){S.view='edit';S.sel=id;render();};
+window.cancEdit=function(){S.view='guest';render();};
+window.elDel=function(id){if(!confirm('Supprimer ?'))return;G=G.filter(x=>x.id!==id);persist();S.view='pipeline';S.sel=null;render();};
+window.chStade=function(id,st){const g=G.find(x=>x.id===id);if(!g)return;g.stade=st;persist();render();};
+window.togInt=function(){const f=document.getElementById('intf');if(f){f.style.display=f.style.display==='none'?'block':'none';if(f.style.display==='block'&&document.getElementById('intt'))document.getElementById('intt').focus();}};
+window.cancInt=function(){const f=document.getElementById('intf');if(f)f.style.display='none';};
+window.saveInt=function(id){const g=G.find(x=>x.id===id);if(!g)return;const t=(document.getElementById('intt').value||'').trim();if(!t)return;if(!g.interactions)g.interactions=[];g.interactions.push({date:new Date().toISOString(),note:t});persist();render();};
+window.saveNew=function(){const p=vv('fp'),n=vv('fn');if(!p&&!n){alert('Prénom ou nom requis');return;}const g=Object.assign({id:uid(),dateAjout:new Date().toISOString(),interactions:[],episode:{shorts:[],sponsors:[]}},rfg());G.push(g);persist();S.view='guest';S.sel=g.id;render();};
+window.saveEdit=function(id){const g=G.find(x=>x.id===id);if(!g)return;Object.assign(g,rfg(g));persist();S.view='guest';render();};
+window.saveMet=function(id){const g=G.find(x=>x.id===id);if(!g)return;if(!g.episode)g.episode={};const se=(eid,fn)=>{const el=document.getElementById(eid);if(el)fn(el.value);};se('ep-ec',v=>g.episode.ecoutes=parseInt(v)||0);se('ep-vu',v=>g.episode.vues=parseInt(v)||0);se('ep-pa',v=>g.episode.partages=parseInt(v)||0);se('ep-co',v=>g.episode.completion=parseInt(v)||null);se('ep-dp',v=>g.episode.datePublication=v);se('ep-sp',v=>g.episode.spotifyLink=v.trim());se('ep-yt',v=>g.episode.youtubeLink=v.trim());persist();render();};
+window.saveEpData=function(id){const g=G.find(x=>x.id===id);if(!g)return;if(!g.episode)g.episode={};const se=(eid,fn)=>{const el=document.getElementById(eid);if(el)fn(el.value);};se('ep-ti',v=>g.episode.titre=v.trim());se('ep-nu',v=>g.episode.numero=parseInt(v)||null);se('ep-dr',v=>g.episode.dateEnregistrement=v);const dt=document.getElementById('ep-to');if(dt)g.dateTournage=dt.value?new Date(dt.value).toISOString():'';persist();render();};
+window.addShort=function(gid,p){const g=G.find(x=>x.id===gid);if(!g)return;if(!g.episode)g.episode={};if(!g.episode.shorts)g.episode.shorts=[];g.episode.shorts.push({id:uid(),platform:p,titre:'',views:0,likes:0,partages:0,lien:''});persist();render();};
+window.delShort=function(gid,sid){const g=G.find(x=>x.id===gid);if(!g||!g.episode)return;g.episode.shorts=(g.episode.shorts||[]).filter(s=>s.id!==sid);persist();render();};
+window.updShort=function(gid,sid,f,val){const g=G.find(x=>x.id===gid);if(!g||!g.episode)return;const sh=(g.episode.shorts||[]).find(s=>s.id===sid);if(!sh)return;sh[f]=(f==='views'||f==='likes'||f==='partages')?parseInt(val)||0:val;persist();};
+window.addSponsor=function(gid){const g=G.find(x=>x.id===gid);if(!g)return;if(!g.episode)g.episode={};if(!g.episode.sponsors)g.episode.sponsors=[];g.episode.sponsors.push({id:uid(),nom:'',type:'mention',montant:0,statut:'confirme',notes:''});persist();render();};
+window.delSponsor=function(gid,sid){const g=G.find(x=>x.id===gid);if(!g||!g.episode)return;g.episode.sponsors=(g.episode.sponsors||[]).filter(s=>s.id!==sid);persist();render();};
+window.updSpo=function(gid,sid,f,val){const g=G.find(x=>x.id===gid);if(!g||!g.episode)return;const sp=(g.episode.sponsors||[]).find(s=>s.id===sid);if(!sp)return;sp[f]=f==='montant'?parseInt(val)||0:val;persist();render();};
+</script>
+</body>
+</html>
