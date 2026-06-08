@@ -2,14 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Kanban, Mic2, Link2 } from 'lucide-react';
+import { LayoutDashboard, Kanban, Mic2, DollarSign, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const tabs = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/pipeline', label: 'Pipeline', icon: Kanban },
   { href: '/episodes', label: 'Épisodes', icon: Mic2 },
-  { href: '/integrations', label: 'Intégrations', icon: Link2 },
+  { href: '/sponsors', label: 'Sponsors', icon: DollarSign },
+  { href: '/parametres', label: 'Paramètres', icon: Settings },
 ];
 
 export function BottomTabBar() {
@@ -17,27 +18,28 @@ export function BottomTabBar() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg-secondary)] backdrop-blur-xl border-t border-[var(--border-subtle)] grid grid-cols-4 pb-safe md:hidden shadow-2xl"
-      style={{ height: '56px' }}
+      className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg-secondary)]/95 backdrop-blur-xl border-t border-[var(--border-subtle)] grid grid-cols-5 pb-safe md:hidden"
+      aria-label="Navigation principale"
     >
       {tabs.map((tab) => {
         const active = pathname.startsWith(tab.href);
         const Icon = tab.icon;
         return (
-          <Link key={tab.href} href={tab.href}>
-            <div className={cn(
-              'flex flex-col items-center justify-center h-full gap-1 relative transition-all duration-200',
-              active ? 'text-cyan-400' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-            )}>
-              {active && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-gradient-to-r from-cyan-400 to-cyan-300 rounded-full" />
+          <Link key={tab.href} href={tab.href} aria-label={tab.label} title={tab.label}>
+            <div
+              className={cn(
+                'flex items-center justify-center h-14 min-h-[56px] transition-all relative',
+                active ? 'text-violet-400' : 'text-[var(--text-muted)] active:scale-95',
               )}
-              <Icon className="w-4 h-4" strokeWidth={active ? 2.5 : 2} />
-              <span className="text-[8px] font-bold tracking-[0.08em] uppercase">{tab.label}</span>
+            >
+              {active && (
+                <span className="absolute top-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-violet-400" />
+              )}
+              <Icon className="w-5 h-5" strokeWidth={active ? 2.5 : 2} />
             </div>
           </Link>
         );
       })}
     </nav>
-  )
+  );
 }

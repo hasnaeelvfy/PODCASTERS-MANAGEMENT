@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { isPlatformSyncing } from './platform-sync.service';
 import { oauthService } from './oauth.service';
 
-const PLATFORMS: Platform[] = ['youtube', 'spotify', 'tiktok', 'instagram'];
+const PLATFORMS: Platform[] = ['youtube', 'spotify'];
 
 const METRIC_LABELS: Record<string, string> = {
   viewCount: 'Vues totales',

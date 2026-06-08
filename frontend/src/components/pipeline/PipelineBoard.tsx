@@ -8,6 +8,9 @@ import { api } from '@/lib/api';
 import { GuestCard } from './GuestCard';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { useSearch, matchesSearch } from '@/contexts/SearchContext';
+import { EmptySearchState } from '@/components/ui/EmptySearchState';
+import { usePermissions } from '@/hooks/usePermissions';
 import type { Guest, PipelineStage } from '@/types';
 
 function PipelineSkeleton() {
@@ -25,7 +28,9 @@ function PipelineSkeleton() {
 }
 
 export function PipelineBoard() {
+  const { canCreate } = usePermissions();
   const [filter, setFilter] = useState<number | 'all'>('all');
+  const { query, hasQuery } = useSearch();
 
   const { data: guests = [], isLoading } = useQuery({
     queryKey: ['guests'],
@@ -37,12 +42,29 @@ export function PipelineBoard() {
     queryFn: () => api.guests.stages(),
   });
 
-  const filtered =
-    filter === 'all' ? guests : guests.filter((g) => g.stageId === filter);
+  const searchFiltered = hasQuery
+    ? guests.filter((g) =>
+        matchesSearch(query, [
+          g.firstName,
+          g.lastName,
+          g.company,
+          g.sector,
+          g.city,
+          `${g.firstName} ${g.lastName}`,
+        ]),
+      )
+    : guests;
 
-  const byStage = (stageId: number) => guests.filter((g) => g.stageId === stageId);
+  const filtered =
+    filter === 'all' ? searchFiltered : searchFiltered.filter((g) => g.stageId === filter);
+
+  const byStage = (stageId: number) => searchFiltered.filter((g) => g.stageId === stageId);
 
   if (isLoading) return <PipelineSkeleton />;
+
+  if (hasQuery && searchFiltered.length === 0) {
+    return <EmptySearchState query={query} entityLabel="invité" />;
+  }
 
   if (guests.length === 0) {
     return (
@@ -54,6 +76,7 @@ export function PipelineBoard() {
         <p className="text-sm text-[var(--text-muted)] max-w-sm mb-6">
           Ajoutez votre premier invité pour démarrer votre studio podcast.
         </p>
+        {canCreate && (
         <Link
           href="/guests/new"
           className="inline-flex items-center rounded-[4px] px-4 py-3 text-sm font-semibold max-w-fit text-black min-h-[44px] transition-opacity hover:opacity-90"
@@ -61,6 +84,7 @@ export function PipelineBoard() {
         >
           + Premier invité
         </Link>
+        )}
       </div>
     );
   }
@@ -83,7 +107,7 @@ export function PipelineBoard() {
               : 'border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)]'
           )}
         >
-          Tous ({guests.length})
+          Tous ({searchFiltered.length})
         </button>
         {stages.map((s: PipelineStage) => (
           <button
@@ -104,13 +128,17 @@ export function PipelineBoard() {
       {/* FILTERED LIST */}
       {filter !== 'all' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {filtered.map((g: Guest) => (
-            <GuestCard key={g.id} guest={g} />
-          ))}
+          {filtered.length === 0 ? (
+            <p className="col-span-full text-sm text-[var(--text-muted)] text-center py-8">
+              Aucun invité dans cette colonne{hasQuery ? ' pour cette recherche' : ''}.
+            </p>
+          ) : (
+            filtered.map((g: Guest) => <GuestCard key={g.id} guest={g} />)
+          )}
         </div>
       ) : (
         /* KANBAN */
-        <div className="flex overflow-x-auto snap-x snap-mandatory gap-2.5 pb-3 hide-scroll -mx-3 px-3 md:mx-0 md:px-0 md:overflow-visible md:gap-3">
+        <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-3 hide-scroll -mx-4 px-4 md:mx-0 md:px-0 md:overflow-visible md:gap-3 scroll-pl-4">
           {stages.map((stage: PipelineStage) => {
             const items = byStage(stage.id);
             return (
@@ -118,20 +146,24 @@ export function PipelineBoard() {
                 key={stage.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="snap-start shrink-0 w-[76vw] md:w-52 min-w-0"
+                className="snap-center shrink-0 w-[calc(100vw-2.5rem)] max-w-[400px] md:w-52 md:max-w-none min-w-0"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[8px] font-black tracking-[0.2em] uppercase text-[var(--text-muted)] truncate pr-1">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <span className="text-[10px] font-black tracking-[0.15em] uppercase text-[var(--text-primary)] truncate pr-2">
                     {stage.name}
                   </span>
-                  <span className="text-[8px] font-bold bg-[var(--bg-hover)] text-[var(--text-muted)] px-1.5 py-0.5 rounded-[2px] tabular-nums shrink-0">
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-full tabular-nums shrink-0"
+                    style={{ backgroundColor: `${stage.color}22`, color: stage.color }}
+                  >
                     {items.length}
                   </span>
                 </div>
                 <div className="min-h-[60px]">
                   {items.map((g: Guest) => (
-                    <GuestCard key={g.id} guest={g} />
+                    <GuestCard key={g.id} guest={g} compact />
                   ))}
+                  {canCreate && (
                   <Link href={`/guests/new?stage=${stage.id}`}>
                     <button
                       type="button"
@@ -140,6 +172,7 @@ export function PipelineBoard() {
                       + ajouter
                     </button>
                   </Link>
+                  )}
                 </div>
               </motion.div>
             );

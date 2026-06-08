@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Mic2 } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
+import { EmptySearchState } from '@/components/ui/EmptySearchState';
 import { api } from '@/lib/api';
-import { calcReach, formatNumber, LANGUAGE_LABELS } from '@/lib/utils';
+import { useSearch, matchesSearch } from '@/contexts/SearchContext';
+import { formatYoutubeViewsLabel, LANGUAGE_LABELS } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import type { Episode } from '@/types';
 
@@ -21,6 +23,8 @@ function statusBadge(position?: number) {
 }
 
 export default function EpisodesPage() {
+  const { query, hasQuery } = useSearch();
+
   const { data: episodes = [], isLoading } = useQuery({
     queryKey: ['episodes'],
     queryFn: () => api.episodes.list(),
@@ -29,6 +33,19 @@ export default function EpisodesPage() {
   const published = episodes.filter(
     (ep) => ep.guest?.stage?.position === 5 || ep.guest?.stage?.position === 6,
   );
+
+  const filtered = hasQuery
+    ? published.filter((ep) => {
+        const g = ep.guest!;
+        return matchesSearch(query, [
+          ep.title,
+          g.firstName,
+          g.lastName,
+          g.company,
+          `${g.firstName} ${g.lastName}`,
+        ]);
+      })
+    : published;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-hidden">
@@ -40,6 +57,8 @@ export default function EpisodesPage() {
             <div key={i} className="skeleton h-24" />
           ))}
         </div>
+      ) : hasQuery && filtered.length === 0 ? (
+        <EmptySearchState query={query} entityLabel="épisode" />
       ) : published.length === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[55vh] text-center">
           <div className="w-14 h-14 rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-hover)] flex items-center justify-center mb-5">
@@ -57,40 +76,47 @@ export default function EpisodesPage() {
         </div>
       ) : (
         <div className="space-y-3 overflow-hidden">
-          {published
+          {filtered
             .sort((a, b) => (a.episodeNumber || 999) - (b.episodeNumber || 999))
-            .map((ep: Episode) => {
+            .map((ep: Episode, index) => {
               const g = ep.guest!;
-              const reach = calcReach(ep);
-              const rev = (ep.sponsors || []).reduce((s, x) => s + Number(x.amount), 0);
+              const viewsLabel = formatYoutubeViewsLabel(ep);
               const badge = statusBadge(g.stage?.position);
 
               return (
-                <Link key={ep.id} href={`/guests/${g.id}`} className="block overflow-hidden">
-                  <div className="card card-hover flex items-center gap-5 p-5">
-                    <span className="text-lg md:text-3xl font-black text-[var(--text-dimmed)] w-10 shrink-0 text-center">
-                      {ep.episodeNumber != null ? ep.episodeNumber : '—'}
-                    </span>
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <p className="text-sm font-black text-[var(--text-primary)]">
-                        {ep.title || `${g.firstName} ${g.lastName}`}
-                      </p>
-                      <p className="text-[11px] text-[var(--text-muted)] mt-1 flex items-center gap-3">
-                        {g.company}
-                        {g.language ? ` · ${LANGUAGE_LABELS[g.language]}` : ''}
-                        {reach > 0 ? ` · ${formatNumber(reach)} vues` : ''}
-                      </p>
-                    </div>
-                    <span className={cn('badge shrink-0', badge.className)}>
-                      {badge.label}
-                    </span>
-                    {rev > 0 && (
-                      <span className="hidden sm:block text-xs text-blue font-semibold tabular-nums shrink-0">
-                        {formatNumber(rev)} MAD
+                <motion.div
+                  key={ep.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.04 }}
+                >
+                  <Link href={`/guests/${g.id}`} className="block overflow-hidden">
+                    <div className="card card-hover flex items-center gap-3 md:gap-5 p-4 md:p-5 group min-h-[72px]">
+                      <span className="text-base md:text-3xl font-black text-[var(--text-dimmed)] w-8 md:w-10 shrink-0 text-center group-hover:text-cyan-400/60 transition-colors">
+                        {ep.episodeNumber != null ? ep.episodeNumber : '—'}
                       </span>
-                    )}
-                  </div>
-                </Link>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-black text-[var(--text-primary)] group-hover:text-cyan-100 transition-colors truncate">
+                            {ep.title || `${g.firstName} ${g.lastName}`}
+                          </p>
+                          <span className={cn('badge shrink-0 text-[8px] md:text-[9px]', badge.className)}>
+                            {badge.label}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-1 truncate">
+                          {g.company}
+                          {g.language ? ` · ${LANGUAGE_LABELS[g.language]}` : ''}
+                        </p>
+                        {viewsLabel && (
+                          <p className="mt-1.5 text-[10px] md:text-[11px] text-violet-300 font-semibold tabular-nums">
+                            {viewsLabel}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
               );
             })}
         </div>

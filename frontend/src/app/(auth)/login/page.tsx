@@ -22,7 +22,7 @@ export default function LoginPage() {
     setError('');
     try {
       const res = await api.auth.login({ email, password });
-      setAuth(res.token, res.user as User);
+      setAuth(res.accessToken, res.user as User);
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de connexion');

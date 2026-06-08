@@ -7,6 +7,7 @@ import { GlowCard } from '@/components/ui/GlowCard';
 import { GlowButton } from '@/components/ui/GlowButton';
 import { Textarea } from '@/components/ui/Input';
 import { api } from '@/lib/api';
+import { usePermissions } from '@/hooks/usePermissions';
 import { formatDate } from '@/lib/utils';
 import type { Interaction } from '@/types';
 
@@ -20,6 +21,7 @@ export function InteractionsList({
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
   const qc = useQueryClient();
+  const { canEdit } = usePermissions();
 
   const mutation = useMutation({
     mutationFn: () => api.guests.addInteraction(guestId, note),
@@ -37,9 +39,11 @@ export function InteractionsList({
           <MessageSquare className="w-4 h-4 text-brand-blue" />
           <h3 className="section-title">Journal des interactions</h3>
         </div>
+        {canEdit && (
         <GlowButton size="sm" onClick={() => setOpen(!open)}>
           + Note
         </GlowButton>
+        )}
       </div>
       {open && (
         <div className="mb-5 p-4 rounded-[4px] bg-bg-elevated/50 border border-white/[0.06]">

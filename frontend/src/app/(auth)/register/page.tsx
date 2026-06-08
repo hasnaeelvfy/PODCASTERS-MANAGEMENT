@@ -23,7 +23,7 @@ export default function RegisterPage() {
     setError('');
     try {
       const res = await api.auth.register(form);
-      setAuth(res.token, res.user as User);
+      setAuth(res.accessToken, res.user as User);
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inscription');

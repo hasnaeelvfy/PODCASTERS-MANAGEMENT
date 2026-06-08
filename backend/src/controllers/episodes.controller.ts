@@ -6,20 +6,30 @@ import { AuthRequest } from '../middleware/auth';
 // URL validation regex
 const urlRegex = /^https?:\/\/.+/;
 
+const optionalUrl = z.preprocess(
+  (val) => (val === '' || val === null || val === undefined ? undefined : val),
+  z.string().regex(urlRegex, 'URL invalide (doit commencer par http:// ou https://)').optional(),
+);
+
 const episodeSchema = z.object({
   guestId: z.number().int().positive(),
-  episodeNumber: z.number().int().optional(),
+  episodeNumber: z.number().int().min(0).optional(),
   title: z.string().optional(),
   recordingDate: z.string().optional(),
   publicationDate: z.string().optional(),
   spotifyLink: z.string().optional(),
   youtubeLink: z.string().optional(),
-  youtubeEpisodeUrl: z.string().regex(urlRegex, 'YouTube episode URL must be a valid URL starting with http:// or https://').optional(),
-  spotifyEpisodeUrl: z.string().regex(urlRegex, 'Spotify episode URL must be a valid URL starting with http:// or https://').optional(),
-  listens: z.number().int().min(0).optional(),
-  views: z.number().int().min(0).optional(),
-  shares: z.number().int().min(0).optional(),
-  completionRate: z.number().min(0).max(100).nullable().optional(),
+  youtubeEpisodeUrl: optionalUrl,
+  spotifyEpisodeUrl: optionalUrl,
+  listens: z.number().int().min(0, 'Les écoutes ne peuvent pas être négatives').optional(),
+  views: z.number().int().min(0, 'Les vues ne peuvent pas être négatives').optional(),
+  shares: z.number().int().min(0, 'Les partages ne peuvent pas être négatifs').optional(),
+  completionRate: z
+    .number()
+    .min(0, 'La complétion doit être entre 0 et 100')
+    .max(100, 'La complétion doit être entre 0 et 100')
+    .nullable()
+    .optional(),
 });
 
 const episodeUpdateSchema = episodeSchema.omit({ guestId: true }).partial();

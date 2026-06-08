@@ -1,25 +1,31 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { GlowCard } from '@/components/ui/GlowCard';
 import { GlowButton } from '@/components/ui/GlowButton';
 import { Badge } from '@/components/ui/Badge';
-import { Input, Select } from '@/components/ui/Input';
+import { Accordion } from '@/components/ui/Accordion';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { InteractionsList } from '@/components/guests/InteractionsList';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
+import type { Episode, Guest } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   initials,
   formatDateTime,
+  formatDuration,
   LANGUAGE_LABELS,
   calcReach,
   formatNumber,
   PLATFORM_LABELS,
+  SPONSOR_STATUS_LABELS,
 } from '@/lib/utils';
 
 export default function GuestDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,6 +34,8 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
   const router = useRouter();
   const qc = useQueryClient();
   const { confirm, ConfirmModalComponent } = useConfirm();
+  const { canEdit, canDelete } = usePermissions();
+  const isMobile = useIsMobile();
 
   const { data: guest, isLoading } = useQuery({
     queryKey: ['guest', guestId],
@@ -84,18 +92,18 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
   const revenue = (ep?.sponsors || []).reduce((s, x) => s + Number(x.amount), 0);
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 overflow-x-hidden">
       <ConfirmModalComponent />
       <Link
         href="/pipeline"
-        className="inline-flex items-center gap-1 text-sm text-brand-yellow mb-6 hover:text-brand-blue transition-colors font-medium"
+        className="inline-flex items-center gap-1.5 text-sm text-brand-yellow mb-4 md:mb-6 hover:text-brand-blue transition-colors font-medium min-h-[44px]"
       >
         <ArrowLeft className="w-4 h-4" /> Retour
       </Link>
 
-      <GlowCard gradient className="mb-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
+      <GlowCard gradient className="mb-4 md:mb-6">
+        <div className="flex flex-col md:flex-row md:flex-wrap md:items-start md:justify-between gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
             <div
               className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold"
               style={{
@@ -115,32 +123,45 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
               </p>
             </div>
           </div>
-          <div className="flex items-end gap-3 flex-wrap">
-            <Select
-              label="Stade"
-              value={guest.stageId}
-              onChange={(e) =>
-                updateGuest.mutate({ stageId: Number(e.target.value) })
-              }
-            >
-              {stages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-            <Link href={`/guests/${guestId}/edit`}>
-              <GlowButton variant="ghost" size="sm">
-                Modifier
-              </GlowButton>
-            </Link>
-            <GlowButton
-              variant="danger"
-              size="sm"
-              onClick={handleDeleteGuest}
-            >
-              <Trash2 className="w-3 h-3" />
-            </GlowButton>
+          <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:flex-wrap md:items-end md:gap-3">
+            {canEdit ? (
+              <Select
+                label="Stade"
+                className="w-full md:flex-none md:min-w-[160px]"
+                value={guest.stageId}
+                onChange={(e) =>
+                  updateGuest.mutate({ stageId: Number(e.target.value) })
+                }
+              >
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <span className="text-sm text-white/50">{stage?.name}</span>
+            )}
+            <div className="flex flex-row items-center gap-2 md:gap-3 shrink-0">
+              {canEdit && (
+                <Link href={`/guests/${guestId}/edit`} className="inline-flex items-center">
+                  <GlowButton variant="ghost" size="sm" className="h-9">
+                    Modifier
+                  </GlowButton>
+                </Link>
+              )}
+              {canDelete && (
+                <GlowButton
+                  variant="danger"
+                  size="sm"
+                  className="h-9 w-9 p-0 flex items-center justify-center shrink-0"
+                  onClick={handleDeleteGuest}
+                  aria-label="Supprimer l'invité"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </GlowButton>
+              )}
+            </div>
           </div>
         </div>
       </GlowCard>
@@ -159,8 +180,8 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
         </GlowCard>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-6">
+      <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 md:gap-6">
+        <div className="space-y-4 md:space-y-6 order-1">
           <GlowCard>
             <h3 className="text-sm font-semibold mb-4">Profil</h3>
             {guest.sector && (
@@ -208,6 +229,7 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
               <EpisodeFields
                 guest={guest}
                 ep={ep}
+                canEdit={canEdit}
                 onSave={(data) => {
                   updateGuest.mutate({ shootingDate: data.shootingDate });
                   updateEpisode.mutate(data.episode);
@@ -217,17 +239,44 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
           )}
 
           {isPublished && ep && (
+            <>
             <GlowCard>
               <h3 className="text-sm font-semibold mb-4">Métriques podcast</h3>
               <MetricsFields
                 ep={ep}
-                onSave={(data) => updateEpisode.mutate(data)}
+                guestId={guestId}
+                canEdit={canEdit}
+                onSave={(data) => updateEpisode.mutateAsync(data)}
               />
             </GlowCard>
+            {(ep.youtubeEpisodeUrl || ep.lastYoutubeSync || ep.lastSyncAt) && (
+              <GlowCard className="border-red-500/20">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <span className="text-red-400">▶</span> Stats YouTube (auto)
+                  </h3>
+                  <span className="text-[10px] text-white/30">
+                    Sync : {new Date(ep.lastYoutubeSync || ep.lastSyncAt!).toLocaleDateString('fr-FR')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatItem label="Vues" value={formatNumber(ep.youtubeViews ?? 0)} color="text-red-400" />
+                  <StatItem label="Likes" value={formatNumber(ep.youtubeLikes ?? 0)} color="text-pink-400" />
+                  <StatItem label="Commentaires" value={formatNumber(ep.youtubeComments ?? 0)} color="text-blue-400" />
+                  <StatItem label="Engagement" value={`${ep.engagementRate ?? 0}%`} color="text-amber-400" />
+                  {ep.youtubeDuration ? (
+                    <div className="col-span-2 p-3 rounded-xl bg-white/[0.03] border border-[var(--border-subtle)]">
+                      <StatItem label="Durée" value={formatDuration(ep.youtubeDuration)} color="text-green-400" />
+                    </div>
+                  ) : null}
+                </div>
+              </GlowCard>
+            )}
+            </>
           )}
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6 order-2">
           <InteractionsList
             guestId={guestId}
             interactions={guest.interactions || []}
@@ -235,7 +284,7 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
           {isPublished && ep && (
             <>
               <ShortsPanel episodeId={ep.id} shorts={ep.shorts || []} guestId={guestId} />
-              <SponsorsPanel episodeId={ep.id} sponsors={ep.sponsors || []} guestId={guestId} />
+              <SponsorsPanel episodeId={ep.id} sponsors={ep.sponsors || []} guestId={guestId} mobileAccordion={isMobile} />
             </>
           )}
         </div>
@@ -244,13 +293,24 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
   );
 }
 
+function StatItem({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div>
+      <p className="text-[10px] text-white/40 uppercase">{label}</p>
+      <p className={`text-sm font-semibold tabular-nums ${color}`}>{value}</p>
+    </div>
+  );
+}
+
 function EpisodeFields({
   guest,
   ep,
+  canEdit,
   onSave,
 }: {
   guest: { shootingDate?: string | null };
   ep: { title?: string | null; episodeNumber?: number | null; recordingDate?: string | null };
+  canEdit: boolean;
   onSave: (d: { shootingDate: string | null; episode: Record<string, unknown> }) => void;
 }) {
   const [shootingDate, setShootingDate] = useState(
@@ -266,11 +326,12 @@ function EpisodeFields({
     <div className="space-y-3">
       <Input label="Créneau" type="datetime-local" value={shootingDate} onChange={(e) => setShootingDate(e.target.value)} />
       <Input label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Input label="Numéro" type="number" value={num} onChange={(e) => setNum(e.target.value)} />
         <Input label="Date enreg." type="date" value={rec} onChange={(e) => setRec(e.target.value)} />
       </div>
       <div className="text-right">
+        {canEdit && (
         <GlowButton
           size="sm"
           onClick={() =>
@@ -286,73 +347,307 @@ function EpisodeFields({
         >
           Enregistrer
         </GlowButton>
+        )}
       </div>
     </div>
   );
 }
 
+function parseNonNegativeInt(value: string): number {
+  if (value === '') return 0;
+  const n = parseInt(value, 10);
+  if (Number.isNaN(n) || n < 0) return 0;
+  return n;
+}
+
+function youtubeSyncErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
+    return 'Vidéo introuvable ou URL invalide';
+  }
+  if (err instanceof Error) return err.message;
+  return 'Impossible de récupérer les stats YouTube';
+}
+
+function mergeEpisodeYoutubeStats(guest: Guest | undefined, synced: Episode): Guest | undefined {
+  if (!guest?.episode) return guest;
+  return {
+    ...guest,
+    episode: {
+      ...guest.episode,
+      youtubeEpisodeUrl: synced.youtubeEpisodeUrl ?? guest.episode.youtubeEpisodeUrl,
+      youtubeVideoId: synced.youtubeVideoId ?? guest.episode.youtubeVideoId,
+      youtubeViews: synced.youtubeViews ?? 0,
+      youtubeLikes: synced.youtubeLikes ?? 0,
+      youtubeComments: synced.youtubeComments ?? 0,
+      youtubeDuration: synced.youtubeDuration ?? guest.episode.youtubeDuration,
+      engagementRate: synced.engagementRate ?? guest.episode.engagementRate,
+      lastYoutubeSync: synced.lastYoutubeSync ?? synced.lastSyncAt ?? guest.episode.lastYoutubeSync,
+      lastSyncAt: synced.lastSyncAt ?? guest.episode.lastSyncAt,
+      views: synced.views ?? synced.youtubeViews ?? guest.episode.views,
+    },
+  };
+}
+
 function MetricsFields({
   ep,
+  guestId,
+  canEdit,
   onSave,
 }: {
   ep: {
+    id: number;
     listens: number;
-    views: number;
+    youtubeViews?: number;
     shares: number;
     completionRate?: string | number | null;
     publicationDate?: string | null;
-    spotifyLink?: string | null;
-    youtubeLink?: string | null;
     youtubeEpisodeUrl?: string | null;
     spotifyEpisodeUrl?: string | null;
   };
-  onSave: (d: Record<string, unknown>) => void;
+  guestId: number;
+  canEdit: boolean;
+  onSave: (d: Record<string, unknown>) => Promise<unknown>;
 }) {
+  const qc = useQueryClient();
   const [form, setForm] = useState({
     listens: ep.listens,
-    views: ep.views,
     shares: ep.shares,
     completion: ep.completionRate?.toString() || '',
     pub: ep.publicationDate ? String(ep.publicationDate).slice(0, 10) : '',
-    spotify: ep.spotifyLink || '',
-    youtube: ep.youtubeLink || '',
     youtubeEpisodeUrl: ep.youtubeEpisodeUrl || '',
     spotifyEpisodeUrl: ep.spotifyEpisodeUrl || '',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [loadingViews, setLoadingViews] = useState(false);
+  const [viewsWarning, setViewsWarning] = useState(false);
+  const [displayViews, setDisplayViews] = useState(ep.youtubeViews ?? 0);
+
+  useEffect(() => {
+    setDisplayViews(ep.youtubeViews ?? 0);
+  }, [ep.youtubeViews]);
+
+  const syncYoutubeStats = useCallback(async () => {
+    const url = form.youtubeEpisodeUrl.trim() || ep.youtubeEpisodeUrl || '';
+    if (!url) {
+      setDisplayViews(0);
+      setViewsWarning(false);
+      return null;
+    }
+
+    setLoadingViews(true);
+    setViewsWarning(false);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.youtubeEpisodeUrl;
+      return next;
+    });
+
+    try {
+      const result = await api.youtube.syncEpisode(ep.id);
+      const synced = result.episode ?? result.stats;
+      if (synced) {
+        setDisplayViews(synced.youtubeViews ?? 0);
+        qc.setQueryData<Guest>(['guest', guestId], (old) => mergeEpisodeYoutubeStats(old, synced));
+      }
+      await qc.invalidateQueries({ queryKey: ['guest', guestId] });
+      await qc.invalidateQueries({ queryKey: ['dashboard'] });
+      return synced;
+    } catch (err) {
+      setDisplayViews(0);
+      setViewsWarning(true);
+      setErrors((prev) => ({
+        ...prev,
+        youtubeEpisodeUrl: youtubeSyncErrorMessage(err),
+      }));
+      return null;
+    } finally {
+      setLoadingViews(false);
+    }
+  }, [ep.id, ep.youtubeEpisodeUrl, form.youtubeEpisodeUrl, guestId, qc]);
+
+  useEffect(() => {
+    if (ep.youtubeEpisodeUrl) {
+      syncYoutubeStats();
+    }
+  }, [ep.id, ep.youtubeEpisodeUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSave = async () => {
+    const newErrors: Record<string, string> = {};
+    if (form.listens < 0) newErrors.listens = 'Valeur minimale : 0';
+    if (form.shares < 0) newErrors.shares = 'Valeur minimale : 0';
+    if (form.completion) {
+      const c = parseFloat(form.completion);
+      if (Number.isNaN(c) || c < 0 || c > 100) {
+        newErrors.completion = 'La complétion doit être entre 0 et 100';
+      }
+    }
+    if (form.youtubeEpisodeUrl && !/^https?:\/\/.+/.test(form.youtubeEpisodeUrl)) {
+      newErrors.youtubeEpisodeUrl = 'URL YouTube invalide';
+    }
+    if (form.spotifyEpisodeUrl && !/^https?:\/\/.+/.test(form.spotifyEpisodeUrl)) {
+      newErrors.spotifyEpisodeUrl = 'URL Spotify invalide';
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
+    setSyncing(true);
+    try {
+      const completionRate = form.completion
+        ? Math.min(100, Math.max(0, parseFloat(form.completion)))
+        : null;
+
+      await onSave({
+        listens: Math.max(0, Math.floor(form.listens)),
+        shares: Math.max(0, Math.floor(form.shares)),
+        completionRate,
+        publicationDate: form.pub || undefined,
+        youtubeEpisodeUrl: form.youtubeEpisodeUrl.trim() || undefined,
+        spotifyEpisodeUrl: form.spotifyEpisodeUrl.trim() || undefined,
+      });
+
+      if (form.youtubeEpisodeUrl.trim()) {
+        await syncYoutubeStats();
+      } else {
+        setDisplayViews(0);
+        setViewsWarning(false);
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sauvegarde échouée';
+      setErrors({ submit: message });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="Écoutes" type="number" value={form.listens} onChange={(e) => setForm({ ...form, listens: Number(e.target.value) })} />
-        <Input label="Vues YouTube" type="number" value={form.views} onChange={(e) => setForm({ ...form, views: Number(e.target.value) })} />
-        <Input label="Partages" type="number" value={form.shares} onChange={(e) => setForm({ ...form, shares: Number(e.target.value) })} />
-        <Input label="Complétion %" type="number" value={form.completion} onChange={(e) => setForm({ ...form, completion: e.target.value })} />
+    <div className="space-y-3 mobile-page-pad-form">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Input
+          label="Écoutes (Spotify)"
+          type="number"
+          min={0}
+          step={1}
+          value={form.listens}
+          disabled={!canEdit}
+          error={errors.listens}
+          onChange={(e) => setForm({ ...form, listens: parseNonNegativeInt(e.target.value) })}
+        />
+        <div className="flex flex-col">
+          <label className="input-label">Vues YouTube</label>
+          <div className="relative">
+            <input
+              className="input-base bg-white/[0.03] cursor-default text-[var(--text-primary)] pr-10"
+              readOnly
+              value={loadingViews ? 'Chargement…' : formatNumber(displayViews)}
+              aria-busy={loadingViews}
+            />
+            {loadingViews && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400 animate-spin" />
+            )}
+            {viewsWarning && !loadingViews && (
+              <span title={errors.youtubeEpisodeUrl || 'Impossible de récupérer les vues YouTube'}>
+                <AlertTriangle className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-400" />
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-white/35 mt-1">Récupéré automatiquement via l&apos;API YouTube</p>
+        </div>
+        <Input
+          label="Partages"
+          type="number"
+          min={0}
+          step={1}
+          value={form.shares}
+          disabled={!canEdit}
+          error={errors.shares}
+          onChange={(e) => setForm({ ...form, shares: parseNonNegativeInt(e.target.value) })}
+        />
+        <Input
+          label="Complétion %"
+          type="number"
+          min={0}
+          max={100}
+          step={1}
+          value={form.completion}
+          disabled={!canEdit}
+          error={errors.completion}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              setForm({ ...form, completion: '' });
+              return;
+            }
+            const n = parseFloat(raw);
+            if (Number.isNaN(n)) return;
+            setForm({ ...form, completion: String(Math.min(100, Math.max(0, n))) });
+          }}
+        />
       </div>
-      <Input label="Date publication" type="date" value={form.pub} onChange={(e) => setForm({ ...form, pub: e.target.value })} />
-      <Input label="Spotify" value={form.spotify} onChange={(e) => setForm({ ...form, spotify: e.target.value })} />
-      <Input label="YouTube" value={form.youtube} onChange={(e) => setForm({ ...form, youtube: e.target.value })} />
-      <Input label="YouTube Episode URL" type="url" placeholder="https://youtube.com/watch?v=..." value={form.youtubeEpisodeUrl} onChange={(e) => setForm({ ...form, youtubeEpisodeUrl: e.target.value })} />
-      <Input label="Spotify Episode URL" type="url" placeholder="https://open.spotify.com/episode/..." value={form.spotifyEpisodeUrl} onChange={(e) => setForm({ ...form, spotifyEpisodeUrl: e.target.value })} />
-      <div className="text-right">
-        <GlowButton
-          size="sm"
-          onClick={() =>
-            onSave({
-              listens: form.listens,
-              views: form.views,
-              shares: form.shares,
-              completionRate: form.completion ? parseFloat(form.completion) : null,
-              publicationDate: form.pub || undefined,
-              spotifyLink: form.spotify,
-              youtubeLink: form.youtube,
-              youtubeEpisodeUrl: form.youtubeEpisodeUrl || undefined,
-              spotifyEpisodeUrl: form.spotifyEpisodeUrl || undefined,
-            })
-          }
-        >
-          Sauvegarder
-        </GlowButton>
+      <Input
+        label="Date publication"
+        type="date"
+        value={form.pub}
+        disabled={!canEdit}
+        onChange={(e) => setForm({ ...form, pub: e.target.value })}
+      />
+      <Input
+        label="YouTube Episode URL"
+        type="url"
+        placeholder="https://youtube.com/watch?v=... ou https://youtu.be/..."
+        value={form.youtubeEpisodeUrl}
+        disabled={!canEdit}
+        onChange={(e) => setForm({ ...form, youtubeEpisodeUrl: e.target.value })}
+        error={errors.youtubeEpisodeUrl}
+      />
+      <Input
+        label="Spotify Episode URL"
+        type="url"
+        placeholder="https://open.spotify.com/episode/..."
+        value={form.spotifyEpisodeUrl}
+        disabled={!canEdit}
+        onChange={(e) => setForm({ ...form, spotifyEpisodeUrl: e.target.value })}
+        error={errors.spotifyEpisodeUrl}
+      />
+      <div className="hidden md:flex items-center justify-end gap-3 pt-1">
+        {errors.submit && (
+          <span className="text-xs text-red-400">{errors.submit}</span>
+        )}
+        {(syncing || loadingViews) && (
+          <span className="text-xs text-violet-400/80">Sync YouTube…</span>
+        )}
+        {saved && <span className="text-xs text-emerald-400">Sauvegardé ✓</span>}
+        {canEdit && (
+          <GlowButton size="sm" onClick={handleSave} disabled={syncing || loadingViews}>
+            Sauvegarder
+          </GlowButton>
+        )}
       </div>
+
+      {canEdit && (
+        <div className="mobile-sticky-footer md:hidden">
+          <div className="flex items-center justify-between gap-2 mb-2 min-h-[20px]">
+            {errors.submit ? (
+              <span className="text-xs text-red-400 truncate">{errors.submit}</span>
+            ) : (syncing || loadingViews) ? (
+              <span className="text-xs text-violet-400/80">Sync YouTube…</span>
+            ) : saved ? (
+              <span className="text-xs text-emerald-400">Sauvegardé ✓</span>
+            ) : (
+              <span className="text-[10px] text-[var(--text-dimmed)]">Métriques & URLs</span>
+            )}
+          </div>
+          <GlowButton className="w-full min-h-[48px]" onClick={handleSave} disabled={syncing || loadingViews}>
+            Sauvegarder
+          </GlowButton>
+        </div>
+      )}
     </div>
   );
 }
@@ -377,6 +672,7 @@ function ShortsPanel({
   guestId: number;
 }) {
   const qc = useQueryClient();
+  const { canCreate, canDelete } = usePermissions();
   const { confirm, ConfirmModalComponent } = useConfirm();
   const totalViews = shorts.reduce((s, x) => s + x.views, 0);
   const [isAdding, setIsAdding] = useState(false);
@@ -439,16 +735,19 @@ function ShortsPanel({
 
   const handleDeleteShort = async (id: number) => {
     const confirmed = await confirm({
-      title: 'Delete this short/reel?',
-      message: 'This action is irreversible. Do you really want to delete this short/reel?',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
+      title: 'Supprimer ce short/reel ?',
+      message: 'Cette action est irréversible. Voulez-vous vraiment supprimer cet élément ?',
+      confirmText: 'Supprimer',
+      cancelText: 'Annuler',
       variant: 'danger',
       icon: 'warning',
     });
-    if (confirmed) {
+    if (!confirmed) return;
+    try {
       await api.shorts.delete(id);
       qc.invalidateQueries({ queryKey: ['guest', guestId] });
+    } catch (err) {
+      setErrors({ submit: err instanceof Error ? err.message : 'Échec de la suppression' });
     }
   };
 
@@ -456,18 +755,20 @@ function ShortsPanel({
     youtube_shorts: 'YouTube Shorts',
     instagram_reels: 'Instagram Reels',
     tiktok: 'TikTok',
+    linkedin: 'LinkedIn',
+    facebook: 'Facebook',
   };
 
   return (
     <GlowCard>
       <ConfirmModalComponent />
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-sm font-semibold">Shorts & Reels Management</h3>
+        <h3 className="text-sm font-semibold">Shorts & Reels</h3>
         {totalViews > 0 && <span className="text-xs text-[var(--text-muted)]">{formatNumber(totalViews)} total views</span>}
       </div>
 
       {shorts.length === 0 && !isAdding && (
-        <p className="text-sm text-[var(--text-muted)] py-4">No shorts or reels added yet.</p>
+        <p className="text-sm text-[var(--text-muted)] py-4">Aucun short ou reel ajouté.</p>
       )}
 
       {shorts.map((s) => (
@@ -482,12 +783,14 @@ function ShortsPanel({
                 </a>
               )}
             </div>
+            {canDelete && (
             <button
               onClick={() => handleDeleteShort(s.id)}
-              className="text-red-400 hover:text-red-300 text-xs"
+              className="text-red-400 hover:text-red-300 text-xs font-medium transition-colors"
             >
-              Delete
+              Supprimer
             </button>
+            )}
           </div>
           {s.description && (
             <p className="text-xs text-[var(--text-muted)] mb-2">{s.description}</p>
@@ -614,14 +917,14 @@ function ShortsPanel({
             </button>
           </div>
         </div>
-      ) : (
+      ) : canCreate ? (
         <button
           className="btn-primary w-full"
           onClick={() => setIsAdding(true)}
         >
           + Add Short/Reel
         </button>
-      )}
+      ) : null}
     </GlowCard>
   );
 }
@@ -630,13 +933,201 @@ function SponsorsPanel({
   episodeId,
   sponsors,
   guestId,
+  mobileAccordion = false,
 }: {
   episodeId: number;
-  sponsors: { id: number; name: string; amount: string | number; status: string }[];
+  sponsors: {
+    id: number;
+    name: string;
+    amount: string | number;
+    status: string;
+    contactName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    notes?: string | null;
+  }[];
   guestId: number;
+  mobileAccordion?: boolean;
 }) {
   const qc = useQueryClient();
+  const { canCreate } = usePermissions();
   const total = sponsors.reduce((s, x) => s + Number(x.amount), 0);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [form, setForm] = useState({
+    name: '',
+    amount: '',
+    status: 'prospect',
+    contactName: '',
+    email: '',
+    phone: '',
+    notes: '',
+  });
+
+  const resetForm = () => {
+    setForm({ name: '', amount: '', status: 'prospect', contactName: '', email: '', phone: '', notes: '' });
+    setErrors({});
+  };
+
+  const handleSubmit = async () => {
+    const newErrors: Record<string, string> = {};
+    if (!form.name.trim()) newErrors.name = 'Le nom est requis';
+    if (!form.amount || Number(form.amount) < 0) newErrors.amount = 'Montant invalide';
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      newErrors.email = 'Email invalide';
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setLoading(true);
+    setErrors({});
+    try {
+      await api.sponsors.create({
+        episodeId,
+        name: form.name.trim(),
+        amount: Number(form.amount),
+        status: form.status,
+        contactName: form.contactName.trim() || undefined,
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        notes: form.notes.trim() || undefined,
+      });
+      qc.invalidateQueries({ queryKey: ['guest', guestId] });
+      resetForm();
+      setShowForm(false);
+    } catch (err) {
+      setErrors({ submit: err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case 'confirme': return 'text-emerald-400';
+      case 'nego': return 'text-amber-400';
+      case 'refuse': return 'text-red-400';
+      case 'paye': return 'text-cyan-400';
+      default: return 'text-[var(--text-muted)]';
+    }
+  };
+
+  const panelBody = (
+    <>
+      {sponsors.length === 0 && !showForm && (
+        <p className="text-sm text-[var(--text-muted)] py-2 mb-2">Aucun sponsor enregistré.</p>
+      )}
+
+      <div className="space-y-2 mb-3">
+        {sponsors.map((s) => (
+          <div key={s.id} className="card p-3 flex items-start justify-between gap-3 min-h-[56px]">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--text-primary)]">{s.name}</p>
+              <p className={`text-xs mt-0.5 ${statusColor(s.status)}`}>
+                {SPONSOR_STATUS_LABELS[s.status] || s.status}
+              </p>
+              {(s.contactName || s.email || s.phone) && (
+                <p className="text-[10px] text-[var(--text-muted)] mt-1 truncate">
+                  {[s.contactName, s.email, s.phone].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
+            <span className="text-sm font-bold text-emerald-400 tabular-nums shrink-0">
+              {formatNumber(Number(s.amount))} MAD
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {showForm ? (
+        <div className="card p-4 space-y-3 border border-cyan-400/20">
+          <h4 className="text-sm font-semibold text-cyan-300">Nouveau sponsor</h4>
+          <Input
+            label="Nom du sponsor *"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            error={errors.name}
+          />
+          <Input
+            label="Montant (MAD) *"
+            type="number"
+            min="0"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            error={errors.amount}
+          />
+          <Select
+            label="Statut *"
+            value={form.status}
+            onChange={(e) => setForm({ ...form, status: e.target.value })}
+          >
+            <option value="prospect">Prospect</option>
+            <option value="contacte">Contacté</option>
+            <option value="nego">En négociation</option>
+            <option value="confirme">Confirmé</option>
+            <option value="refuse">Refusé</option>
+            <option value="partenaire_recurrent">Partenaire récurrent</option>
+          </Select>
+          <Input
+            label="Nom du contact"
+            value={form.contactName}
+            onChange={(e) => setForm({ ...form, contactName: e.target.value })}
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            error={errors.email}
+          />
+          <Input
+            label="Téléphone"
+            type="tel"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <Textarea
+            label="Notes"
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            rows={3}
+          />
+          {errors.submit && <p className="text-xs text-red-400">{errors.submit}</p>}
+          <div className="flex gap-2 pt-1">
+            <GlowButton size="sm" className="flex-1" onClick={handleSubmit} disabled={loading}>
+              {loading ? 'Enregistrement...' : 'Enregistrer'}
+            </GlowButton>
+            <GlowButton
+              size="sm"
+              variant="ghost"
+              onClick={() => { setShowForm(false); resetForm(); }}
+            >
+              Annuler
+            </GlowButton>
+          </div>
+        </div>
+      ) : canCreate ? (
+        <GlowButton size="sm" className="w-full min-h-[48px]" onClick={() => setShowForm(true)}>
+          + Ajouter sponsor
+        </GlowButton>
+      ) : null}
+    </>
+  );
+
+  if (mobileAccordion) {
+    return (
+      <Accordion
+        title="Sponsors"
+        subtitle={total > 0 ? `${formatNumber(total)} MAD · ${sponsors.length} sponsor${sponsors.length > 1 ? 's' : ''}` : `${sponsors.length} sponsor${sponsors.length !== 1 ? 's' : ''}`}
+        defaultOpen={sponsors.length > 0}
+      >
+        {panelBody}
+      </Accordion>
+    );
+  }
 
   return (
     <GlowCard>
@@ -646,25 +1137,7 @@ function SponsorsPanel({
           <span className="text-sm font-semibold text-emerald-400">{formatNumber(total)} MAD</span>
         )}
       </div>
-      {sponsors.map((s) => (
-        <p key={s.id} className="text-xs text-white/60 mb-2">
-          {s.name} — {formatNumber(Number(s.amount))} MAD ({s.status})
-        </p>
-      ))}
-      <GlowButton
-        size="sm"
-        className="mt-2"
-        onClick={async () => {
-          await api.sponsors.create({
-            episodeId,
-            name: 'Nouveau sponsor',
-            status: 'prospect',
-          });
-          qc.invalidateQueries({ queryKey: ['guest', guestId] });
-        }}
-      >
-        + Ajouter sponsor
-      </GlowButton>
+      {panelBody}
     </GlowCard>
   );
 }

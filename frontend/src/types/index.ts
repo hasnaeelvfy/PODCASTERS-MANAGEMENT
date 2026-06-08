@@ -24,21 +24,30 @@ export interface Short {
   id: number;
   episodeId: number;
   platform: string;
-  title?: string | null;
+  title: string;
+  url: string;
+  description: string;
   views: number;
   likes: number;
   shares: number;
-  url?: string | null;
+  publishedAt?: string | null;
 }
 
 export interface Sponsor {
   id: number;
   episodeId: number;
   name: string;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
   sponsorType: string;
   amount: string | number;
   status: string;
   notes?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  isRecurring?: boolean;
+  episode?: Episode;
 }
 
 export interface Episode {
@@ -50,6 +59,18 @@ export interface Episode {
   publicationDate?: string | null;
   spotifyLink?: string | null;
   youtubeLink?: string | null;
+  youtubeEpisodeUrl?: string | null;
+  spotifyEpisodeUrl?: string | null;
+  spotifyPublicationDate?: string | null;
+  youtubeVideoId?: string | null;
+  youtubeViews?: number;
+  youtubeLikes?: number;
+  youtubeComments?: number;
+  youtubeDuration?: number | null;
+  youtubeAvgWatchTime?: number | null;
+  lastYoutubeSync?: string | null;
+  engagementRate?: string | number | null;
+  lastSyncAt?: string | null;
   listens: number;
   views: number;
   shares: number;
@@ -130,8 +151,46 @@ export interface DashboardStats {
   topEpisodesByPlatform: {
     youtube: TopEpisodeByPlatform[];
     spotify: TopEpisodeByPlatform[];
-    tiktok: TopEpisodeByPlatform[];
-    instagram: TopEpisodeByPlatform[];
+    tiktok?: TopEpisodeByPlatform[];
+    instagram?: TopEpisodeByPlatform[];
   };
   revenueEvolution: { month: string; revenue: number }[];
+}
+
+export interface PremiumDashboard {
+  kpis: {
+    totalEpisodes: { value: number; change: number };
+    publishedEpisodes: { value: number; change: number };
+    totalYoutubeViews: { value: number; change: number };
+    totalSpotifyListens: { value: number; change: number };
+    confirmedRevenue: { value: number; change: number };
+    activeSponsors: { value: number; change: number };
+    avgEngagement: { value: number; change: number };
+    totalGuests: { value: number; change: number };
+  };
+  viewsEvolution: { month: string; views: number }[];
+  revenueEvolution: { month: string; revenue: number; confirmed: number; prospect: number }[];
+  recentEpisodes: { id: number; guestId: number; title: string; views: number; listens: number; publicationDate: string | null; youtubeEpisodeUrl?: string | null }[];
+  recentSponsors: { id: number; name: string; amount: number; status: string; episodeTitle: string }[];
+  topEpisodes: { id: number; title: string; episodeNumber?: number | null; youtubeViews: number; spotifyListens: number }[];
+  upcomingEvents: { date: string; type: string; label: string; guestId: number }[];
+  tasks: { id: number; title: string; status: string; dueDate: string | null; guestName: string; assignee?: string }[];
+  activity: { type: string; label: string; date: string; guestId?: number }[];
+  stats: DashboardStats['stats'];
+  topEpisodesByPlatform: DashboardStats['topEpisodesByPlatform'];
+  revenueEvolutionLegacy?: { month: string; revenue: number }[];
+}
+
+export interface SponsorStats {
+  totalConfirmedRevenue: number;
+  activeSponsors: number;
+  inNegotiationAmount: number;
+  totalSponsors: number;
+  byStatus: Record<string, number>;
+  topSponsor: { id: number; name: string; amount: number } | null;
+}
+
+export interface PaginatedSponsors {
+  data: Sponsor[];
+  pagination: { page: number; limit: number; total: number; totalPages: number; hasNextPage: boolean; hasPrevPage: boolean };
 }

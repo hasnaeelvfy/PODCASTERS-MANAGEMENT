@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { upsertPlatformToken } from './platform-sync.service';
 
-const PLATFORMS: Platform[] = ['youtube', 'spotify', 'tiktok', 'instagram'];
+const PLATFORMS: Platform[] = ['youtube', 'spotify'];
 
 type OAuthConfig = {
   clientId: string;

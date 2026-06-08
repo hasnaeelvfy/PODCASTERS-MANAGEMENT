@@ -9,6 +9,14 @@ export function formatNumber(n: number): string {
   return new Intl.NumberFormat('fr-MA').format(n);
 }
 
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h${m.toString().padStart(2, '0')}m`;
+  return `${m}m${s.toString().padStart(2, '0')}s`;
+}
+
 export function formatDate(d: string | Date | null | undefined): string {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('fr-MA', {
@@ -34,14 +42,32 @@ export function initials(first: string, last: string): string {
   return ((first[0] || '') + (last[0] || '')).toUpperCase() || '?';
 }
 
+const AVATAR_COLORS = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#06B6D4', '#EF4444'];
+
+export function userInitials(fullname: string): string {
+  const parts = fullname.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return (parts[0]?.slice(0, 2) || '?').toUpperCase();
+}
+
+export function avatarColorFromName(name: string): string {
+  const char = (name.trim()[0] || 'A').toUpperCase();
+  const index = Math.abs(char.charCodeAt(0) - 65) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[index] ?? AVATAR_COLORS[0];
+}
+
 export function calcReach(ep?: {
   listens?: number;
   views?: number;
+  youtubeViews?: number;
   shorts?: { views: number }[];
 }): number {
   if (!ep) return 0;
   const shortViews = (ep.shorts || []).reduce((s, sh) => s + (sh.views || 0), 0);
-  return (ep.listens || 0) + (ep.views || 0) + shortViews;
+  const youtube = ep.youtubeViews && ep.youtubeViews > 0 ? ep.youtubeViews : (ep.views || 0);
+  return (ep.listens || 0) + youtube + shortViews;
 }
 
 export const LANGUAGE_LABELS: Record<string, string> = {
@@ -52,9 +78,45 @@ export const LANGUAGE_LABELS: Record<string, string> = {
 };
 
 export const PLATFORM_LABELS: Record<string, string> = {
-  yt_shorts: 'YouTube Shorts',
-  instagram: 'Instagram Reels',
+  youtube_shorts: 'YouTube Shorts',
+  instagram_reels: 'Instagram Reels',
   tiktok: 'TikTok',
   linkedin: 'LinkedIn',
   facebook: 'Facebook',
 };
+
+export const SPONSOR_STATUS_LABELS: Record<string, string> = {
+  prospect: 'Prospect',
+  contacte: 'Contacté',
+  nego: 'En négociation',
+  confirme: 'Confirmé',
+  paye: 'Payé',
+  refuse: 'Refusé',
+  partenaire_recurrent: 'Partenaire récurrent',
+};
+
+export function formatYoutubeViewsLabel(ep: {
+  youtubeViews?: number | null;
+  youtubeEpisodeUrl?: string | null;
+  youtubeLink?: string | null;
+}): string | null {
+  const hasYoutubeUrl = Boolean(ep.youtubeEpisodeUrl?.trim() || ep.youtubeLink?.trim());
+  if (!hasYoutubeUrl) return null;
+  if (!ep.youtubeViews) return '— vues';
+  return `${formatNumber(ep.youtubeViews)} vues`;
+}
+
+export function youtubeThumbnailUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const patterns = [
+    /youtube\.com\/watch\?v=([^&\s]+)/,
+    /youtu\.be\/([^?\s]+)/,
+    /youtube\.com\/embed\/([^?\s]+)/,
+    /youtube\.com\/shorts\/([^?\s]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return `https://img.youtube.com/vi/${match[1]}/mqdefault.jpg`;
+  }
+  return null;
+}

@@ -6,6 +6,9 @@ import shortsRoutes from './shorts.routes';
 import sponsorsRoutes from './sponsors.routes';
 import dashboardRoutes from './dashboard.routes';
 import analyticsRoutes from './analytics.routes';
+import youtubeRoutes from './youtube.routes';
+import settingsRoutes from './settings.routes';
+import usersRoutes from './users.routes';
 
 const router = Router();
 
@@ -16,6 +19,9 @@ router.use('/shorts', shortsRoutes);
 router.use('/sponsors', sponsorsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/youtube', youtubeRoutes);
+router.use('/settings', settingsRoutes);
+router.use('/users', usersRoutes);
 
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'prodcasters-api' });

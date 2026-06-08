@@ -80,11 +80,26 @@ export async function updateEpisode(
     completionRate: number | null;
   }>,
 ) {
-  await getEpisodeById(id);
+  const existing = await getEpisodeById(id);
+  const youtubeUrlChanged =
+    data.youtubeEpisodeUrl !== undefined &&
+    data.youtubeEpisodeUrl !== existing.youtubeEpisodeUrl;
+
   return prisma.episode.update({
     where: { id },
     data: {
       ...data,
+      ...(youtubeUrlChanged
+        ? {
+            youtubeVideoId: null,
+            youtubeViews: 0,
+            youtubeLikes: 0,
+            youtubeComments: 0,
+            youtubeDuration: null,
+            engagementRate: null,
+            lastYoutubeSync: null,
+          }
+        : {}),
       recordingDate: data.recordingDate ? new Date(data.recordingDate) : undefined,
       publicationDate: data.publicationDate ? new Date(data.publicationDate) : undefined,
       completionRate:

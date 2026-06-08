@@ -7,5 +7,7 @@ const router = Router();
 router.use(authenticate);
 router.get('/', shortsController.list);
 router.post('/', shortsController.create);
+router.put('/:id', shortsController.update);
+router.delete('/:id', shortsController.remove);
 
 export default router;

@@ -110,6 +110,23 @@ export async function updateGuest(
   }>,
 ) {
   await getGuestById(id);
+
+  if (data.stageId !== undefined) {
+    const stage = await prisma.pipelineStage.findUnique({ where: { id: data.stageId } });
+    if (stage?.position === 6) {
+      const existing = await prisma.guest.findUnique({
+        where: { id },
+        include: { episode: true },
+      });
+      if (existing?.episode && !existing.episode.publicationDate) {
+        await prisma.episode.update({
+          where: { id: existing.episode.id },
+          data: { publicationDate: new Date() },
+        });
+      }
+    }
+  }
+
   return prisma.guest.update({
     where: { id },
     data: {

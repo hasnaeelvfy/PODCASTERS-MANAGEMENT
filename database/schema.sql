@@ -89,20 +89,22 @@ CREATE TABLE interactions (
 -- episodes
 -- ------------------------------------------------------------
 CREATE TABLE episodes (
-  id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  guest_id         INT UNSIGNED NOT NULL,
-  episode_number   INT NULL DEFAULT NULL,
-  title            VARCHAR(500) NULL DEFAULT NULL,
-  recording_date   DATE NULL DEFAULT NULL,
-  publication_date DATE NULL DEFAULT NULL,
-  spotify_link     VARCHAR(512) NULL DEFAULT NULL,
-  youtube_link     VARCHAR(512) NULL DEFAULT NULL,
-  listens          INT UNSIGNED NOT NULL DEFAULT 0,
-  views            INT UNSIGNED NOT NULL DEFAULT 0,
-  shares           INT UNSIGNED NOT NULL DEFAULT 0,
-  completion_rate  DECIMAL(5,2) NULL DEFAULT NULL,
-  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  id                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  guest_id           INT UNSIGNED NOT NULL,
+  episode_number     INT NULL DEFAULT NULL,
+  title              VARCHAR(500) NULL DEFAULT NULL,
+  recording_date     DATE NULL DEFAULT NULL,
+  publication_date   DATE NULL DEFAULT NULL,
+  spotify_link       VARCHAR(512) NULL DEFAULT NULL,
+  youtube_link       VARCHAR(512) NULL DEFAULT NULL,
+  youtube_episode_url VARCHAR(512) NULL DEFAULT NULL,
+  spotify_episode_url VARCHAR(512) NULL DEFAULT NULL,
+  listens            INT UNSIGNED NOT NULL DEFAULT 0,
+  views              INT UNSIGNED NOT NULL DEFAULT 0,
+  shares             INT UNSIGNED NOT NULL DEFAULT 0,
+  completion_rate    DECIMAL(5,2) NULL DEFAULT NULL,
+  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_episodes_guest_id (guest_id),
   KEY idx_episodes_publication_date (publication_date),
@@ -120,12 +122,14 @@ CREATE TABLE episodes (
 CREATE TABLE shorts (
   id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
   episode_id INT UNSIGNED NOT NULL,
-  platform   ENUM('yt_shorts', 'instagram', 'tiktok', 'linkedin', 'facebook') NOT NULL,
-  title      VARCHAR(500) NULL DEFAULT NULL,
+  platform   ENUM('youtube_shorts', 'instagram_reels', 'tiktok', 'linkedin', 'facebook') NOT NULL,
+  title      VARCHAR(500) NOT NULL DEFAULT '',
   views      INT UNSIGNED NOT NULL DEFAULT 0,
   likes      INT UNSIGNED NOT NULL DEFAULT 0,
   shares     INT UNSIGNED NOT NULL DEFAULT 0,
-  url        VARCHAR(512) NULL DEFAULT NULL,
+  url        VARCHAR(512) NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  published_at DATETIME NULL DEFAULT NULL,
   PRIMARY KEY (id),
   KEY idx_shorts_episode_id (episode_id),
   KEY idx_shorts_platform (platform),
@@ -141,9 +145,12 @@ CREATE TABLE sponsors (
   id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
   episode_id   INT UNSIGNED NOT NULL,
   name         VARCHAR(255) NOT NULL DEFAULT '',
+  contact      VARCHAR(255) NULL DEFAULT NULL,
+  email        VARCHAR(255) NULL DEFAULT NULL,
+  phone        VARCHAR(50) NULL DEFAULT NULL,
   sponsor_type ENUM('preroll', 'midroll', 'postroll', 'mention', 'partenaire') NOT NULL DEFAULT 'mention',
   amount       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  status       ENUM('prospect', 'nego', 'confirme', 'paye') NOT NULL DEFAULT 'prospect',
+  status       ENUM('prospect', 'nego', 'confirme', 'paye', 'refuse') NOT NULL DEFAULT 'prospect',
   notes        TEXT NULL,
   PRIMARY KEY (id),
   KEY idx_sponsors_episode_id (episode_id),
@@ -196,6 +203,37 @@ CREATE TABLE notifications (
   CONSTRAINT fk_notifications_user
     FOREIGN KEY (user_id) REFERENCES users (id)
     ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- platform_tokens
+-- ------------------------------------------------------------
+CREATE TABLE platform_tokens (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  platform      ENUM('youtube', 'spotify', 'tiktok', 'instagram') NOT NULL,
+  access_token  TEXT NOT NULL,
+  refresh_token TEXT NULL DEFAULT NULL,
+  expires_at    DATETIME NULL DEFAULT NULL,
+  scope         VARCHAR(512) NULL DEFAULT NULL,
+  last_sync_at  DATETIME NULL DEFAULT NULL,
+  last_sync_error TEXT NULL DEFAULT NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_platform_tokens_platform (platform)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- platform_stats
+-- ------------------------------------------------------------
+CREATE TABLE platform_stats (
+  id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  platform     ENUM('youtube', 'spotify', 'tiktok', 'instagram') NOT NULL,
+  metric_key   VARCHAR(100) NOT NULL,
+  metric_value DECIMAL(18,4) NOT NULL,
+  recorded_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_platform_stats_lookup (platform, metric_key, recorded_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------

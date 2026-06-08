@@ -3,43 +3,48 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import type { Guest } from '@/types';
-import { initials, formatDateTime, LANGUAGE_LABELS, calcReach } from '@/lib/utils';
-import { Badge } from '@/components/ui/Badge';
+import { cn, initials, formatDateTime, LANGUAGE_LABELS } from '@/lib/utils';
 
-export function GuestCard({ guest }: { guest: Guest }) {
+export function GuestCard({ guest, compact = false }: { guest: Guest; compact?: boolean }) {
   const stage = guest.stage;
-  const reach = guest.stage?.position === 6 ? calcReach(guest.episode || undefined) : 0;
 
   return (
     <Link href={`/guests/${guest.id}`} className="block group">
-      <div className="card card-hover p-3 md:p-4 transition-all duration-300">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-violet-400/20 to-pink-400/10 text-[11px] font-bold text-cyan-300 flex items-center justify-center border border-[var(--border-subtle)] shrink-0 group-hover:border-cyan-400/40 transition-colors">
-            {initials(guest.firstName, guest.lastName)}
-          </div>
+      <div className={cn('card card-hover transition-all duration-300 active:scale-[0.99]', compact ? 'p-3' : 'p-3 md:p-4')}>
+        <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-bold text-[var(--text-primary)] leading-tight truncate">
+            <p className="text-[13px] font-bold text-[var(--text-primary)] leading-tight truncate">
               {guest.firstName} {guest.lastName}
             </p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-1 truncate">{guest.company}</p>
+            {guest.company && (
+              <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate">{guest.company}</p>
+            )}
           </div>
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-2">
-          {guest.language && guest.language !== 'adefini' ? (
-            <span className="badge badge-blue text-[9px]">{LANGUAGE_LABELS[guest.language]}</span>
-          ) : <span />}
-          {guest.shootingDate && (
-            <p className="text-[9px] text-[var(--text-muted)] font-medium shrink-0">
-              {formatDateTime(guest.shootingDate)}
-            </p>
+          {stage && (
+            <span
+              className="badge text-[8px] shrink-0 max-w-[40%] truncate"
+              style={{ backgroundColor: `${stage.color}18`, color: stage.color, borderColor: `${stage.color}40` }}
+            >
+              {stage.name}
+            </span>
           )}
         </div>
-        {reach > 0 && (
-          <p className="text-[10px] text-cyan-400 font-bold mt-2">
-            📊 {reach.toLocaleString('fr')} portée
-          </p>
+        {!compact && (
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-violet-400/20 to-pink-400/10 text-[10px] font-bold text-cyan-300 flex items-center justify-center border border-[var(--border-subtle)] shrink-0">
+              {initials(guest.firstName, guest.lastName)}
+            </div>
+            <div className="min-w-0 flex-1">
+              {guest.language && guest.language !== 'adefini' && (
+                <span className="badge badge-blue text-[9px]">{LANGUAGE_LABELS[guest.language]}</span>
+              )}
+            </div>
+          </div>
+        )}
+        {guest.shootingDate && (
+          <p className="mt-2 text-[10px] text-[var(--text-muted)]">{formatDateTime(guest.shootingDate)}</p>
         )}
       </div>
     </Link>
-  )
+  );
 }

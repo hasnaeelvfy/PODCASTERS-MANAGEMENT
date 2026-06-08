@@ -30,26 +30,29 @@
 }
 
 .dark {
-  /* Dark Mode */
-  --bg-primary: #0A0E14;
-  --bg-secondary: #111820;
-  --bg-tertiary: #1A1F2E;
+  /* Premium Dark — Linear/Vercel inspired */
+  --bg-primary: #0A0D14;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1C2333;
   --bg-hover: #242D3D;
-  
-  --accent-primary: #06B6D4;
-  --accent-primary-dark: #0891B2;
-  --accent-primary-light: #22D3EE;
-  
-  --accent-secondary: #8B5CF6;
-  --accent-tertiary: #EC4899;
-  
-  --text-primary: #FFFFFF;
-  --text-secondary: #E5E7EB;
-  --text-muted: #9CA3AF;
-  --text-dimmed: #6B7280;
-  
+
+  --accent-primary: #8B5CF6;
+  --accent-primary-dark: #7C3AED;
+  --accent-primary-light: #A78BFA;
+  --accent-purple: #8B5CF6;
+  --accent-pink: #EC4899;
+  --accent-blue: #3B82F6;
+  --accent-green: #10B981;
+  --accent-orange: #F59E0B;
+
+  --text-primary: #F9FAFB;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --text-dimmed: #4B5563;
+
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-default: rgba(255, 255, 255, 0.12);
+  --glow-purple: 0 0 40px rgba(139, 92, 246, 0.15);
 }
 
 body {
@@ -57,6 +60,7 @@ body {
   color: var(--text-primary);
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 /* ── SCROLLBAR ── */
@@ -72,10 +76,47 @@ body {
 
 /* ── SAFE AREA ── */
 .pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
 
-/* ── CARDS ── MODERN ELEVATION */
+/* ── MOBILE ── */
+@media (max-width: 767px) {
+  .input-base,
+  select.input-base {
+    min-height: 48px;
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+
+  textarea.input-base {
+    min-height: 96px;
+  }
+
+  .mobile-sticky-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+    z-index: 40;
+    padding: 0.75rem 1rem;
+    background: color-mix(in srgb, var(--bg-secondary) 95%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .mobile-page-pad {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-page-pad-form {
+    padding-bottom: calc(8.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ── CARDS — Glassmorphism Premium ── */
 .card {
-  background: #FFFFFF;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -83,18 +124,33 @@ body {
 }
 
 .dark .card {
-  background: linear-gradient(135deg, rgba(17, 24, 32, 0.8) 0%, rgba(26, 31, 46, 0.6) 100%);
-  box-shadow: none;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--glow-purple);
 }
 
-.card-hover { 
+.card-hover {
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.card-hover:hover { 
-  border-color: var(--accent-primary);
-  transform: translateY(-4px);
-  box-shadow: 0 20px 40px rgba(6, 182, 212, 0.1);
+.card-hover:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(139, 92, 246, 0.12);
 }
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+}
+
+.kpi-glow-purple { box-shadow: 0 0 40px rgba(139, 92, 246, 0.12); }
+.kpi-glow-green  { box-shadow: 0 0 40px rgba(16, 185, 129, 0.12); }
+.kpi-glow-blue   { box-shadow: 0 0 40px rgba(59, 130, 246, 0.12); }
+.kpi-glow-pink   { box-shadow: 0 0 40px rgba(236, 72, 153, 0.12); }
 
 .card-gold  { border-top: 3px solid var(--accent-secondary); }
 .card-green { border-top: 3px solid #10B981; }
@@ -344,6 +400,29 @@ body {
 .dark .input-base:focus {
   background: rgba(6, 182, 212, 0.05);
   box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+}
+
+/* Native select — dropdown list readable in dark mode (Windows/Chrome) */
+.dark select,
+.dark select.input-base {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #FFFFFF;
+  color: #0F172A;
+}
+
+.dark select option {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.dark select option:checked,
+.dark select option:hover,
+.dark select option:focus {
+  background-color: var(--accent-primary);
+  color: #FFFFFF;
 }
 
 /* ── TABLE ROWS ── */
