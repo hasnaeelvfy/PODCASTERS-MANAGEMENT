@@ -15,9 +15,9 @@ import type { Guest, PipelineStage } from '@/types';
 
 function PipelineSkeleton() {
   return (
-    <div className="flex gap-4 overflow-hidden">
+    <div className="flex flex-col gap-4 md:flex-row md:gap-4 md:overflow-hidden">
       {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="min-w-[220px] space-y-2">
+        <div key={i} className="w-full md:min-w-[220px] space-y-2">
           <div className="skeleton h-8 w-full" />
           <div className="skeleton h-24 w-full" />
           <div className="skeleton h-24 w-full" />
@@ -89,15 +89,49 @@ export function PipelineBoard() {
     );
   }
 
-  const tabClass = (active: boolean) =>
-    active
-      ? 'shrink-0 rounded-[4px] px-4 py-2 text-[10px] font-bold tracking-[0.1em] uppercase bg-gold text-black border-gold'
-      : 'shrink-0 rounded-[4px] px-4 py-2 text-[10px] font-bold tracking-[0.1em] uppercase border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--accent-primary)]/30 hover:text-[var(--accent-primary)]/70 transition-all';
+  const renderStageSection = (stage: PipelineStage, items: Guest[], hideIfEmptyOnMobile = false) => (
+    <motion.div
+      key={stage.id}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn(
+        'w-full min-w-0 md:snap-center md:shrink-0 md:w-52 md:max-w-none',
+        hideIfEmptyOnMobile && items.length === 0 && 'hidden md:block',
+      )}
+    >
+      <div className="flex items-center justify-between mb-2 md:mb-3 px-1">
+        <span className="text-[10px] font-black tracking-[0.15em] uppercase text-[var(--text-primary)] truncate pr-2">
+          {stage.name}
+        </span>
+        <span
+          className="text-[10px] font-bold px-2 py-0.5 rounded-full tabular-nums shrink-0"
+          style={{ backgroundColor: `${stage.color}22`, color: stage.color }}
+        >
+          {items.length}
+        </span>
+      </div>
+      <div className="min-h-0 md:min-h-[60px] space-y-2">
+        {items.map((g: Guest) => (
+          <GuestCard key={g.id} guest={g} compact />
+        ))}
+        {canCreate && (
+          <Link href={`/guests/new?stage=${stage.id}`}>
+            <button
+              type="button"
+              className="w-full mt-0.5 p-2.5 min-h-[36px] text-center text-[8px] font-bold tracking-[0.1em] uppercase text-[var(--text-muted)] border border-dashed border-[var(--border-subtle)] rounded-[3px] hover:border-[#F5C542]/20 hover:text-[#F5C542]/40 transition-all"
+            >
+              + ajouter
+            </button>
+          </Link>
+        )}
+      </div>
+    </motion.div>
+  );
 
   return (
-    <div className="overflow-hidden">
+    <div className="min-w-0 max-w-full">
       {/* FILTER TABS */}
-      <div className="flex overflow-x-auto gap-1.5 pb-2.5 mb-3 hide-scroll">
+      <div className="flex flex-nowrap overflow-x-auto gap-1.5 pb-2.5 mb-3 hide-scroll -mx-4 px-4 md:mx-0 md:px-0 scroll-pl-4">
         <button
           onClick={() => setFilter('all')}
           className={cn(
@@ -127,56 +161,30 @@ export function PipelineBoard() {
 
       {/* FILTERED LIST */}
       {filter !== 'all' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {filtered.length === 0 ? (
-            <p className="col-span-full text-sm text-[var(--text-muted)] text-center py-8">
-              Aucun invité dans cette colonne{hasQuery ? ' pour cette recherche' : ''}.
-            </p>
-          ) : (
-            filtered.map((g: Guest) => <GuestCard key={g.id} guest={g} />)
-          )}
-        </div>
+        <>
+          {/* Mobile — single stage section (shown even when empty) */}
+          <div className="md:hidden">
+            {stages
+              .filter((s: PipelineStage) => s.id === filter)
+              .map((stage: PipelineStage) => renderStageSection(stage, byStage(stage.id)))}
+          </div>
+          {/* Desktop — grid (unchanged) */}
+          <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {filtered.length === 0 ? (
+              <p className="col-span-full text-sm text-[var(--text-muted)] text-center py-8">
+                Aucun invité dans cette colonne{hasQuery ? ' pour cette recherche' : ''}.
+              </p>
+            ) : (
+              filtered.map((g: Guest) => <GuestCard key={g.id} guest={g} />)
+            )}
+          </div>
+        </>
       ) : (
-        /* KANBAN */
-        <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-3 hide-scroll -mx-4 px-4 md:mx-0 md:px-0 md:overflow-visible md:gap-3 scroll-pl-4">
-          {stages.map((stage: PipelineStage) => {
-            const items = byStage(stage.id);
-            return (
-              <motion.div
-                key={stage.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="snap-center shrink-0 w-[calc(100vw-2.5rem)] max-w-[400px] md:w-52 md:max-w-none min-w-0"
-              >
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <span className="text-[10px] font-black tracking-[0.15em] uppercase text-[var(--text-primary)] truncate pr-2">
-                    {stage.name}
-                  </span>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full tabular-nums shrink-0"
-                    style={{ backgroundColor: `${stage.color}22`, color: stage.color }}
-                  >
-                    {items.length}
-                  </span>
-                </div>
-                <div className="min-h-[60px]">
-                  {items.map((g: Guest) => (
-                    <GuestCard key={g.id} guest={g} compact />
-                  ))}
-                  {canCreate && (
-                  <Link href={`/guests/new?stage=${stage.id}`}>
-                    <button
-                      type="button"
-                      className="w-full mt-1 p-2.5 min-h-[36px] text-center text-[8px] font-bold tracking-[0.1em] uppercase text-[var(--text-muted)] border border-dashed border-[var(--border-subtle)] rounded-[3px] hover:border-[#F5C542]/20 hover:text-[#F5C542]/40 transition-all"
-                    >
-                      + ajouter
-                    </button>
-                  </Link>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
+        /* KANBAN — vertical stack on mobile, horizontal on desktop */
+        <div className="flex flex-col gap-4 md:flex-row md:overflow-x-auto md:snap-x md:snap-mandatory md:gap-3 md:pb-3 hide-scroll md:-mx-0 md:px-0 md:scroll-pl-0">
+          {stages.map((stage: PipelineStage) =>
+            renderStageSection(stage, byStage(stage.id), true),
+          )}
         </div>
       )}
     </div>

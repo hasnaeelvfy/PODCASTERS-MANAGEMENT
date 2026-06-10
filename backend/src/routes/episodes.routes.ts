@@ -6,6 +6,7 @@ const router = Router();
 
 router.use(authenticate);
 router.get('/', episodesController.list);
+router.get('/:id/active-sponsor', episodesController.activeSponsor);
 router.post('/', episodesController.create);
 router.put('/:id', episodesController.update);
 router.delete('/:id', episodesController.remove);

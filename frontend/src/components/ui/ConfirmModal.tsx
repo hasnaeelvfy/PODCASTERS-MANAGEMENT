@@ -74,13 +74,13 @@ export function ConfirmModal({
           />
           
           {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 max-w-[100vw] overflow-hidden">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ duration: 0.2 }}
-              className="relative w-full max-w-md bg-[#0B0F19] border border-[var(--border-subtle)] rounded-xl shadow-2xl"
+              className="relative w-full max-w-[min(100vw-2rem,28rem)] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-[#0B0F19] border border-[var(--border-subtle)] rounded-xl shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close button */}
@@ -111,10 +111,10 @@ export function ConfirmModal({
                 </p>
 
                 {/* Buttons */}
-                <div className="flex gap-3">
+                <div className="flex flex-col-reverse sm:flex-row gap-3">
                   <button
                     onClick={onClose}
-                    className="flex-1 px-4 py-2.5 rounded-lg border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors font-medium text-sm"
+                    className="flex-1 min-h-[48px] sm:min-h-0 px-4 py-2.5 rounded-lg border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors font-medium text-sm"
                   >
                     {cancelText}
                   </button>
@@ -123,7 +123,7 @@ export function ConfirmModal({
                       onConfirm();
                       onClose();
                     }}
-                    className={`flex-1 px-4 py-2.5 rounded-lg ${getConfirmButtonClass()} transition-colors font-medium text-sm`}
+                    className={`flex-1 min-h-[48px] sm:min-h-0 px-4 py-2.5 rounded-lg ${getConfirmButtonClass()} transition-colors font-medium text-sm`}
                   >
                     {confirmText}
                   </button>

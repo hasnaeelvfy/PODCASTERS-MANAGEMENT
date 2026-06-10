@@ -9,8 +9,8 @@ export function GuestCard({ guest, compact = false }: { guest: Guest; compact?: 
   const stage = guest.stage;
 
   return (
-    <Link href={`/guests/${guest.id}`} className="block group">
-      <div className={cn('card card-hover transition-all duration-300 active:scale-[0.99]', compact ? 'p-3' : 'p-3 md:p-4')}>
+    <Link href={`/guests/${guest.id}`} className="block group w-full">
+      <div className={cn('card card-hover w-full transition-all duration-300 active:scale-[0.99]', compact ? 'p-3' : 'p-3 md:p-4')}>
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-bold text-[var(--text-primary)] leading-tight truncate">

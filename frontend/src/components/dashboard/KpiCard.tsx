@@ -41,7 +41,7 @@ export function KpiCard({ label, value, change, icon: Icon, accent = 'purple', d
           <Icon className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
         </div>
       </div>
-      <p className={cn('font-bold tracking-tight text-[var(--text-primary)] font-mono tabular-nums', compact ? 'text-lg' : 'text-2xl md:text-3xl')}>
+      <p className={cn('font-bold tracking-tight text-[var(--text-primary)] font-mono tabular-nums truncate', compact ? 'text-base sm:text-lg' : 'text-2xl md:text-3xl')}>
         {value}
       </p>
       {!compact && change !== undefined && change !== 0 && (

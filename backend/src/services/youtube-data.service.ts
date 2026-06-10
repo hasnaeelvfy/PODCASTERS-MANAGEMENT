@@ -1,6 +1,8 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
-import { getSetting, getYoutubeApiKey } from './settings.service';
+import { getValidAccessToken } from './platform-token.service';
+import { getYoutubeApiKey } from './settings.service';
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
@@ -39,11 +41,52 @@ export interface YoutubeStatsPayload {
   engagementRate: number;
   lastYoutubeSync: Date;
   views: number;
+  shares: number;
+}
+
+/** Shares require YouTube Analytics API (OAuth). Returns 0 if unavailable. */
+async function fetchYoutubeShares(videoId: string): Promise<number> {
+  const accessToken = await getValidAccessToken('youtube');
+  if (!accessToken) return 0;
+
+  const end = new Date().toISOString().slice(0, 10);
+  const params = new URLSearchParams({
+    ids: 'channel==MINE',
+    startDate: '2005-01-01',
+    endDate: end,
+    metrics: 'shares',
+    filters: `video==${videoId}`,
+  });
+
+  try {
+    const res = await fetch(
+      `https://youtubeanalytics.googleapis.com/v2/reports?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) return 0;
+
+    const body = (await res.json()) as { rows?: number[][] };
+    const val = body.rows?.[0]?.[0];
+    return Number(val) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function resolveYoutubeApiKey(apiKey?: string): Promise<string> {
+  if (apiKey) return apiKey;
+  if (process.env.YOUTUBE_API_KEY) return process.env.YOUTUBE_API_KEY;
+  try {
+    const fromDb = await getYoutubeApiKey();
+    if (fromDb) return fromDb;
+  } catch (err) {
+    console.error('[YouTube] Lecture clé API en base échouée:', err);
+  }
+  throw new AppError(400, 'YOUTUBE_API_KEY non configurée — ajoutez-la dans Paramètres ou .env');
 }
 
 export async function fetchYoutubeStats(videoId: string, apiKey?: string): Promise<YoutubeStatsPayload> {
-  const key = apiKey || (await getYoutubeApiKey()) || process.env.YOUTUBE_API_KEY;
-  if (!key) throw new AppError(400, 'YOUTUBE_API_KEY non configurée');
+  const key = await resolveYoutubeApiKey(apiKey);
 
   const url = `${YOUTUBE_API_BASE}/videos?part=statistics,contentDetails&id=${videoId}&key=${key}`;
   const res = await fetch(url);
@@ -75,6 +118,8 @@ export async function fetchYoutubeStats(videoId: string, apiKey?: string): Promi
     ? parseFloat(((likes + comments) / views * 100).toFixed(2))
     : 0;
 
+  const shares = await fetchYoutubeShares(videoId);
+
   return {
     youtubeVideoId: videoId,
     youtubeViews: views,
@@ -84,6 +129,7 @@ export async function fetchYoutubeStats(videoId: string, apiKey?: string): Promi
     engagementRate,
     lastYoutubeSync: new Date(),
     views,
+    shares,
   };
 }
 
@@ -118,22 +164,30 @@ export async function syncEpisodeYoutubeStats(episodeId: number) {
 
   const stats = await fetchYoutubeStats(videoId);
 
+  const { views: _views, shares: _shares, ...youtubeFields } = stats;
   const updated = await prisma.episode.update({
     where: { id: episodeId },
     data: {
-      ...stats,
+      ...youtubeFields,
+      views: stats.views,
+      shares: stats.shares,
+      engagementRate: new Prisma.Decimal(stats.engagementRate),
       lastSyncAt: stats.lastYoutubeSync,
     },
     include: { guest: true },
   });
 
-  await prisma.platformStat.create({
-    data: {
-      platform: 'youtube',
-      metricKey: `episode_${episodeId}_views`,
-      metricValue: stats.youtubeViews,
-    },
-  });
+  try {
+    await prisma.platformStat.create({
+      data: {
+        platform: 'youtube',
+        metricKey: `episode_${episodeId}_views`,
+        metricValue: stats.youtubeViews,
+      },
+    });
+  } catch (err) {
+    console.error('[YouTube] platform_stats insert failed:', err);
+  }
 
   return { success: true, episode: updated, stats: updated };
 }
@@ -143,11 +197,15 @@ export async function syncOnSave(youtubeUrl: string, episodeId: number) {
   if (!videoId) throw new AppError(400, 'Vidéo introuvable ou URL invalide');
 
   const stats = await fetchYoutubeStats(videoId);
+  const { views: _views, shares: _shares, ...youtubeFields } = stats;
   const updated = await prisma.episode.update({
     where: { id: episodeId },
     data: {
       youtubeEpisodeUrl: youtubeUrl,
-      ...stats,
+      ...youtubeFields,
+      views: stats.views,
+      shares: stats.shares,
+      engagementRate: new Prisma.Decimal(stats.engagementRate),
       lastSyncAt: stats.lastYoutubeSync,
     },
   });
@@ -203,6 +261,7 @@ export async function getEpisodeYoutubeStats(episodeId: number) {
     views: episode.youtubeViews,
     likes: episode.youtubeLikes,
     comments: episode.youtubeComments,
+    shares: episode.shares,
     duration: episode.youtubeDuration,
     engagementRate: episode.engagementRate ? Number(episode.engagementRate) : 0,
     lastYoutubeSync: episode.lastYoutubeSync || episode.lastSyncAt,

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Search, Bell, Radio, Sun, Moon, X, Menu } from 'lucide-react';
+import { Plus, Search, Radio, Sun, Moon, X, Menu } from 'lucide-react';
+import { NotificationBell } from '@/components/NotificationBell';
 import Link from 'next/link';
 import { getStoredUser } from '@/lib/auth';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -30,7 +31,6 @@ export function TopBar({ title, subtitle, showNewGuest, showSearch = true }: Top
   const { canCreate } = usePermissions();
   const userInitials = user?.fullname?.[0] || 'U';
   const showAddGuest = showNewGuest && canCreate;
-  const hasNotifications = false;
 
   const searchInput = showSearch ? (
     <div className="flex items-center gap-2 bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-[10px] px-3 h-10 w-56 focus-within:border-cyan-400/40 transition-colors">
@@ -72,11 +72,16 @@ export function TopBar({ title, subtitle, showNewGuest, showSearch = true }: Top
           <div className="flex items-center gap-1 shrink-0">
             {showAddGuest && (
               <Link href="/guests/new">
-                <button type="button" className="btn-primary h-9 w-9 p-0 flex items-center justify-center rounded-xl" aria-label="Nouvel invité">
-                  <Plus className="w-4 h-4" />
+                <button
+                  type="button"
+                  className="h-8 w-8 flex items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-violet-600 text-white shrink-0 shadow-sm active:scale-95 transition-transform"
+                  aria-label="Nouvel invité"
+                >
+                  <Plus className="w-4 h-4" strokeWidth={2.5} />
                 </button>
               </Link>
             )}
+            <NotificationBell mobileSearchVisible={showSearch} />
             <button
               type="button"
               className="btn-ghost p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -124,12 +129,7 @@ export function TopBar({ title, subtitle, showNewGuest, showSearch = true }: Top
           <button className="btn-ghost relative" onClick={toggleTheme}>
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
-          <button className="btn-ghost relative">
-            <Bell className="w-4 h-4" />
-            {hasNotifications && (
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-glow" />
-            )}
-          </button>
+          <NotificationBell />
           <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-violet-400/30 to-pink-400/30 border border-[var(--border-subtle)] flex items-center justify-center text-[10px] font-bold text-cyan-300">
             {userInitials}
           </div>

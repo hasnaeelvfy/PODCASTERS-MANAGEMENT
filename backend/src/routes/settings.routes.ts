@@ -8,6 +8,7 @@ const router = Router();
 router.use(authenticate);
 router.get('/', settingsController.getAll);
 router.put('/', requireRole('admin', 'editor'), settingsController.update);
+router.post('/test-email', requireRole('admin', 'editor'), settingsController.testNotificationEmail);
 router.get('/users', requireRole('admin'), settingsController.getUsers);
 
 export default router;

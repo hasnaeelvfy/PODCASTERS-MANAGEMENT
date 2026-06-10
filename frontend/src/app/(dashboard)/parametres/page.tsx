@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Youtube, Music, Settings, Bell, Users, Shield, Eye, EyeOff, RefreshCw, Lock } from 'lucide-react';
@@ -121,6 +121,16 @@ export default function ParametresPage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
+  const [notificationForm, setNotificationForm] = useState({
+    notification_email: '',
+    smtp_user: '',
+    notify_shooting_reminder: true,
+    notify_sponsor_confirmed: true,
+    notify_weekly_report: false,
+  });
+  const [smtpAppPassword, setSmtpAppPassword] = useState('');
+  const [showSmtpPass, setShowSmtpPass] = useState(false);
+  const [notificationError, setNotificationError] = useState('');
   const toast = useToast();
   const qc = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -139,7 +149,32 @@ export default function ParametresPage() {
 
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, string | null>) => api.settings.update(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings'] }); toast.success('Paramètres sauvegardés'); },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['settings'] });
+      const isNotifications = 'notification_email' in variables;
+      toast.success(
+        isNotifications
+          ? 'Préférences de notification enregistrées'
+          : 'Paramètres sauvegardés',
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  useEffect(() => {
+    if (!settings) return;
+    setNotificationForm({
+      notification_email: settings.notification_email || '',
+      smtp_user: settings.smtp_user || '',
+      notify_shooting_reminder: settings.notify_shooting_reminder !== 'false',
+      notify_sponsor_confirmed: settings.notify_sponsor_confirmed !== 'false',
+      notify_weekly_report: settings.notify_weekly_report === 'true',
+    });
+  }, [settings]);
+
+  const testEmailMutation = useMutation({
+    mutationFn: () => api.settings.testEmail(),
+    onSuccess: (r) => toast.success(r.message),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -178,7 +213,47 @@ export default function ParametresPage() {
     onError: (e: Error) => setPasswordError(e.message),
   });
 
+  const validateNotificationEmail = (email: string, prefs: typeof notificationForm) => {
+    const anyEnabled =
+      prefs.notify_shooting_reminder ||
+      prefs.notify_sponsor_confirmed ||
+      prefs.notify_weekly_report;
+    if (anyEnabled && !email.trim()) {
+      return "L'email de notification est requis lorsqu'une alerte est activée";
+    }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return 'Adresse email invalide';
+    }
+    return '';
+  };
+
+  const handleSaveNotifications = () => {
+    const email = notificationForm.notification_email.trim();
+    const error = validateNotificationEmail(email, notificationForm);
+    if (error) {
+      setNotificationError(error);
+      toast.error(error);
+      return;
+    }
+    setNotificationError('');
+    const payload: Record<string, string> = {
+      notification_email: email,
+      smtp_user: notificationForm.smtp_user.trim() || email,
+      notify_shooting_reminder: notificationForm.notify_shooting_reminder ? 'true' : 'false',
+      notify_sponsor_confirmed: notificationForm.notify_sponsor_confirmed ? 'true' : 'false',
+      notify_weekly_report: notificationForm.notify_weekly_report ? 'true' : 'false',
+    };
+    if (smtpAppPassword.trim()) payload.smtp_app_password = smtpAppPassword.trim().replace(/\s/g, '');
+    saveMutation.mutate(payload, {
+      onSuccess: () => setSmtpAppPassword(''),
+    });
+  };
+
   const handleSave = () => {
+    if (tab === 'notifications') {
+      handleSaveNotifications();
+      return;
+    }
     const payload: Record<string, string | null> = { ...form };
     if (youtubeKey) payload.youtube_api_key = youtubeKey;
     saveMutation.mutate(payload);
@@ -205,7 +280,7 @@ export default function ParametresPage() {
   const s = settings || {};
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 max-w-full overflow-x-hidden">
       <TopBar title="Paramètres" showSearch={false} />
 
       <div className="flex flex-col md:flex-row gap-6">
@@ -224,7 +299,7 @@ export default function ParametresPage() {
           })}
         </nav>
 
-        <div className="flex-1 glass-panel p-6">
+        <div className="flex-1 glass-panel p-4 md:p-6 min-w-0 overflow-hidden">
           {isLoading ? <p className="text-[var(--text-muted)]">Chargement...</p> : (
             <>
               {tab === 'youtube' && (
@@ -238,10 +313,12 @@ export default function ParametresPage() {
                       {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <div className="flex gap-3">
-                    <GlowButton onClick={() => testYoutube.mutate()} disabled={testYoutube.isPending}>Tester la connexion</GlowButton>
+                  <div className="flex flex-col md:flex-row gap-3 min-w-0">
+                    <GlowButton className="w-full md:w-auto min-h-[48px] md:min-h-0 justify-center" onClick={() => testYoutube.mutate()} disabled={testYoutube.isPending}>
+                      Tester la connexion
+                    </GlowButton>
                     {canEdit && (
-                    <button className="btn-secondary" onClick={() => syncYoutube.mutate()} disabled={syncYoutube.isPending}>
+                    <button className="btn-secondary w-full md:w-auto min-h-[48px] md:min-h-0 justify-center" onClick={() => syncYoutube.mutate()} disabled={syncYoutube.isPending}>
                       <RefreshCw className={`w-3 h-3 ${syncYoutube.isPending ? 'animate-spin' : ''}`} /> Synchroniser
                     </button>
                     )}
@@ -279,26 +356,80 @@ export default function ParametresPage() {
               {tab === 'notifications' && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">Notifications</h2>
-                  <Input label="Email de notification" type="email" defaultValue={s.notification_email || ''}
-                    onChange={(e) => setForm({ ...form, notification_email: e.target.value })} />
+                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                    Les alertes sont envoyées à l&apos;email ci-dessous. Utilisez un mot de passe d&apos;application Gmail
+                    du <strong className="text-[var(--text-secondary)]">même compte</strong> que le compte d&apos;envoi
+                    (activez la validation en 2 étapes sur Google, puis créez un mot de passe sur{' '}
+                    <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-violet-300 underline">
+                      myaccount.google.com/apppasswords
+                    </a>
+                    ).
+                  </p>
+                  <Input
+                    label="Email de notification (destinataire)"
+                    type="email"
+                    placeholder="vous@exemple.com"
+                    value={notificationForm.notification_email}
+                    error={notificationError}
+                    onChange={(e) => {
+                      setNotificationForm({ ...notificationForm, notification_email: e.target.value });
+                      if (notificationError) setNotificationError('');
+                    }}
+                  />
+                  <Input
+                    label="Compte Gmail d'envoi (SMTP)"
+                    type="email"
+                    placeholder={notificationForm.notification_email || 'Même que l\'email de notification'}
+                    value={notificationForm.smtp_user}
+                    onChange={(e) => setNotificationForm({ ...notificationForm, smtp_user: e.target.value })}
+                  />
+                  <div className="relative">
+                    <Input
+                      label="Mot de passe d'application Gmail"
+                      type={showSmtpPass ? 'text' : 'password'}
+                      placeholder={s.smtp_app_password_masked || 'Collez le mot de passe d\'application (16 caractères)'}
+                      value={smtpAppPassword}
+                      onChange={(e) => setSmtpAppPassword(e.target.value)}
+                    />
+                    <button type="button" onClick={() => setShowSmtpPass(!showSmtpPass)} className="absolute right-3 top-9 btn-ghost p-1">
+                      {showSmtpPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   {[
-                    { key: 'notify_shooting_reminder', label: 'Rappel tournage J-7' },
-                    { key: 'notify_sponsor_confirmed', label: 'Alerte sponsor confirmé' },
-                    { key: 'notify_weekly_report', label: 'Rapport hebdomadaire' },
+                    { key: 'notify_shooting_reminder' as const, label: 'Rappel tournage J-7' },
+                    { key: 'notify_sponsor_confirmed' as const, label: 'Alerte sponsor confirmé' },
+                    { key: 'notify_weekly_report' as const, label: 'Rapport hebdomadaire' },
                   ].map((n) => (
-                    <label key={n.key} className="flex items-center gap-3 text-sm cursor-pointer">
-                      <input type="checkbox" defaultChecked={s[n.key] === 'true'}
-                        onChange={(e) => setForm({ ...form, [n.key]: e.target.checked ? 'true' : 'false' })} />
+                    <label key={n.key} className="flex items-center gap-3 text-sm cursor-pointer min-h-[44px]">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-violet-500"
+                        checked={notificationForm[n.key]}
+                        onChange={(e) =>
+                          setNotificationForm({ ...notificationForm, [n.key]: e.target.checked })
+                        }
+                      />
                       {n.label}
                     </label>
                   ))}
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <GlowButton
+                      type="button"
+                      variant="ghost"
+                      onClick={() => testEmailMutation.mutate()}
+                      disabled={testEmailMutation.isPending}
+                    >
+                      {testEmailMutation.isPending ? 'Envoi...' : 'Tester l\'envoi email'}
+                    </GlowButton>
+                    <span className="text-[10px] text-[var(--text-muted)]">Enregistrez d&apos;abord si vous venez de modifier le mot de passe.</span>
+                  </div>
                 </div>
               )}
 
               {tab === 'users' && canManageUsers && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">Utilisateurs</h2>
-                  <div className="-mx-2 md:mx-0 rounded-xl border border-[var(--border-subtle)] overflow-hidden md:max-w-2xl">
+                  <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden md:max-w-2xl">
                     {users.length === 0 ? (
                       <p className="px-4 py-6 text-sm text-[var(--text-muted)]">Aucun utilisateur.</p>
                     ) : (
@@ -348,7 +479,7 @@ export default function ParametresPage() {
 
               {tab !== 'users' && tab !== 'security' && canEdit && (
                 <div className="mt-6 pt-4 border-t border-[var(--border-subtle)]">
-                  <GlowButton onClick={handleSave} disabled={saveMutation.isPending}>
+                  <GlowButton className="w-full md:w-auto min-h-[48px] md:min-h-0 justify-center" onClick={handleSave} disabled={saveMutation.isPending}>
                     {saveMutation.isPending ? 'Sauvegarde...' : 'Enregistrer'}
                   </GlowButton>
                 </div>

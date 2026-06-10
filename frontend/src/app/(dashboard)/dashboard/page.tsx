@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   Mic2, Eye, DollarSign, Users, TrendingUp, Star, CheckCircle,
-  Calendar, ListTodo, Activity, Search, Headphones,
+  Search, Headphones,
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15,6 +15,10 @@ import {
 import { TopBar } from '@/components/layout/TopBar';
 import { KpiCard } from '@/components/dashboard/KpiCard';
 import { ChartCarousel } from '@/components/dashboard/ChartCarousel';
+import { EditorialCalendarWidget } from '@/components/dashboard/EditorialCalendarWidget';
+import { TasksWidget } from '@/components/dashboard/TasksWidget';
+import { ActivityWidget } from '@/components/dashboard/ActivityWidget';
+import { SponsoringWidget } from '@/components/dashboard/SponsoringWidget';
 import { KpiCardSkeleton, ChartSkeleton } from '@/components/ui/Skeleton';
 import { EmptySearchState } from '@/components/ui/EmptySearchState';
 import { api } from '@/lib/api';
@@ -120,7 +124,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { kpis, viewsEvolution, revenueEvolution, recentEpisodes, recentSponsors, upcomingEvents, tasks, activity } = data;
+  const { kpis, viewsEvolution, revenueEvolution, recentEpisodes, recentSponsors } = data;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 overflow-x-hidden space-y-6">
@@ -241,45 +245,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Bottom row: calendar, tasks, activity */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-panel p-5">
-          <h3 className="text-sm font-bold mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-violet-400" /> Calendrier éditorial</h3>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {upcomingEvents.length === 0 && <p className="text-xs text-[var(--text-muted)]">Aucun événement à venir.</p>}
-            {upcomingEvents.map((ev, i) => (
-              <Link key={i} href={`/guests/${ev.guestId}`} className="block p-2 rounded-lg border border-violet-500/10 hover:border-violet-500/30 transition-colors">
-                <p className="text-xs font-semibold text-violet-300">{ev.type === 'shooting' ? '🎬' : '📡'} {ev.label}</p>
-                <p className="text-[10px] text-[var(--text-muted)]">{new Date(ev.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        <div className="glass-panel p-5">
-          <h3 className="text-sm font-bold mb-4 flex items-center gap-2"><ListTodo className="w-4 h-4 text-blue-400" /> Tâches en cours</h3>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {tasks.length === 0 && <p className="text-xs text-[var(--text-muted)]">Aucune tâche en cours.</p>}
-            {tasks.map((t) => (
-              <div key={t.id} className="p-2 rounded-lg bg-white/[0.02]">
-                <p className="text-xs font-semibold">{t.title}</p>
-                <p className="text-[10px] text-[var(--text-muted)]">{t.guestName}{t.dueDate ? ` · ${new Date(t.dueDate).toLocaleDateString('fr-FR')}` : ''}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="glass-panel p-5">
-          <h3 className="text-sm font-bold mb-4 flex items-center gap-2"><Activity className="w-4 h-4 text-pink-400" /> Activité récente</h3>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {activity.map((a, i) => (
-              <div key={i} className="flex gap-2 text-xs">
-                <span className="text-[var(--text-dimmed)] shrink-0">{new Date(a.date).toLocaleDateString('fr-FR')}</span>
-                <span className="text-[var(--text-secondary)]">{a.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Bottom row: sponsoring, calendar, tasks, activity */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <SponsoringWidget />
+        <EditorialCalendarWidget />
+        <TasksWidget />
+        <ActivityWidget />
       </div>
 
       {/* Top episodes bar chart */}

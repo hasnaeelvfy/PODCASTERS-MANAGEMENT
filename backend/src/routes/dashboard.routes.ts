@@ -6,5 +6,6 @@ const router = Router();
 
 router.use(authenticate);
 router.get('/stats', dashboardController.stats);
+router.get('/editorial-calendar', dashboardController.editorialCalendar);
 
 export default router;

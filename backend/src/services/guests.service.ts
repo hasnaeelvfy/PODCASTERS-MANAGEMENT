@@ -1,6 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { GuestLanguage } from '@prisma/client';
+import { logActivity } from './activity.service';
+import { broadcastNotification } from './notification.service';
 
 const STAGE_KEY_MAP: Record<string, number> = {
   idee: 1,
@@ -32,7 +34,20 @@ export async function listGuests(filters?: { stageId?: number; search?: string }
     },
     include: {
       stage: true,
-      episode: { include: { shorts: true, sponsors: true } },
+      episode: {
+        include: {
+          shorts: true,
+          sponsors: true,
+          contractEpisodes: {
+            where: { contract: { deletedAt: null } },
+            include: {
+              contract: {
+                include: { sponsor: true },
+              },
+            },
+          },
+        },
+      },
       interactions: { orderBy: { createdAt: 'desc' }, take: 1 },
       _count: { select: { interactions: true } },
     },
@@ -46,7 +61,20 @@ export async function getGuestById(id: number) {
     include: {
       stage: true,
       interactions: { orderBy: { createdAt: 'desc' } },
-      episode: { include: { shorts: true, sponsors: true } },
+      episode: {
+        include: {
+          shorts: true,
+          sponsors: true,
+          contractEpisodes: {
+            where: { contract: { deletedAt: null } },
+            include: {
+              contract: {
+                include: { sponsor: true },
+              },
+            },
+          },
+        },
+      },
       tasks: true,
     },
   });
@@ -88,6 +116,10 @@ export async function createGuest(data: {
     },
     include: { stage: true, episode: true },
   });
+
+  const name = `${guest.firstName} ${guest.lastName}`.trim();
+  await logActivity(`Invité ajouté : ${name}`);
+
   return guest;
 }
 
@@ -109,25 +141,22 @@ export async function updateGuest(
     notes: string;
   }>,
 ) {
-  await getGuestById(id);
+  const before = await getGuestById(id);
+  const previousStageId = before.stageId;
 
   if (data.stageId !== undefined) {
     const stage = await prisma.pipelineStage.findUnique({ where: { id: data.stageId } });
     if (stage?.position === 6) {
-      const existing = await prisma.guest.findUnique({
-        where: { id },
-        include: { episode: true },
-      });
-      if (existing?.episode && !existing.episode.publicationDate) {
+      if (before.episode && !before.episode.publicationDate) {
         await prisma.episode.update({
-          where: { id: existing.episode.id },
+          where: { id: before.episode.id },
           data: { publicationDate: new Date() },
         });
       }
     }
   }
 
-  return prisma.guest.update({
+  const updated = await prisma.guest.update({
     where: { id },
     data: {
       ...data,
@@ -140,10 +169,54 @@ export async function updateGuest(
     },
     include: {
       stage: true,
-      episode: { include: { shorts: true, sponsors: true } },
+      episode: {
+        include: {
+          shorts: true,
+          sponsors: true,
+          contractEpisodes: {
+            where: { contract: { deletedAt: null } },
+            include: {
+              contract: {
+                include: { sponsor: true },
+              },
+            },
+          },
+        },
+      },
       interactions: { orderBy: { createdAt: 'desc' } },
     },
   });
+
+  if (data.stageId !== undefined && data.stageId !== previousStageId) {
+    const stage = updated.stage;
+    const name = `${updated.firstName} ${updated.lastName}`.trim();
+    const stageLabel = stage?.name ?? 'mis à jour';
+
+    await logActivity(`Invité ${stageLabel} : ${name}`);
+
+    if (stage?.position === 4) {
+      await broadcastNotification(
+        'rappel_enregistrement',
+        '🎙️ Enregistrement à planifier',
+        `🎙️ Invité confirmé : ${name} — pensez à planifier l'enregistrement`,
+        `/guests/${id}`,
+      );
+    }
+
+    if (stage?.position === 6) {
+      const ep = updated.episode;
+      const epTitle = ep?.title || name;
+      await broadcastNotification(
+        'episode_publie',
+        '✅ Épisode publié',
+        `✅ Épisode publié : ${epTitle}`,
+        `/guests/${id}`,
+      );
+      await logActivity(`Épisode publié : ${epTitle}`);
+    }
+  }
+
+  return updated;
 }
 
 export async function deleteGuest(id: number) {

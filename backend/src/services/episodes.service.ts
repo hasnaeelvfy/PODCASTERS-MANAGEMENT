@@ -8,6 +8,14 @@ export async function listEpisodes() {
       guest: { include: { stage: true } },
       shorts: true,
       sponsors: true,
+      contractEpisodes: {
+        where: {
+          contract: { deletedAt: null, contractStatus: 'active' },
+        },
+        include: {
+          contract: { include: { sponsor: true } },
+        },
+      },
     },
     orderBy: [{ episodeNumber: 'asc' }, { createdAt: 'desc' }],
   });
@@ -97,6 +105,7 @@ export async function updateEpisode(
             youtubeComments: 0,
             youtubeDuration: null,
             engagementRate: null,
+            shares: 0,
             lastYoutubeSync: null,
           }
         : {}),

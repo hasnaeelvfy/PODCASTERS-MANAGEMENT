@@ -106,6 +106,27 @@ export function formatYoutubeViewsLabel(ep: {
   return `${formatNumber(ep.youtubeViews)} vues`;
 }
 
+export function timeAgoFr(date: string | Date): string {
+  const then = new Date(date).getTime();
+  const diffSec = Math.floor((Date.now() - then) / 1000);
+  if (diffSec < 60) return "à l'instant";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `il y a ${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `il y a ${diffD}j`;
+  return formatDate(date);
+}
+
+export function formatEditorialDate(date: string | Date): string {
+  return new Date(date).toLocaleDateString('fr-FR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
 export function youtubeThumbnailUrl(url?: string | null): string | null {
   if (!url) return null;
   const patterns = [

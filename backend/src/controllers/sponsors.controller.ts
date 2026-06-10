@@ -3,9 +3,13 @@ import { z } from 'zod';
 import * as sponsorsService from '../services/sponsors.service';
 import { AuthRequest } from '../middleware/auth';
 
-const sponsorSchema = z.object({
-  episodeId: z.number().int().positive(),
+const sponsorBaseSchema = z.object({
+  episodeId: z.number().int().positive().optional(),
+  episodeIds: z.array(z.number().int().positive()).min(1).optional(),
   name: z.string().min(1, 'Le nom du sponsor est requis'),
+  logoUrl: z.string().url().optional().nullable().or(z.literal('')),
+  websiteUrl: z.string().url().optional().nullable().or(z.literal('')),
+  niche: z.string().optional().nullable(),
   contactName: z.string().optional(),
   email: z.string().email('Email invalide').optional().or(z.literal('')),
   phone: z.string().optional(),
@@ -16,9 +20,20 @@ const sponsorSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   isRecurring: z.boolean().optional(),
+  contractType: z.enum([
+    'per_episode', 'monthly', 'campaign', 'recurring', 'annual', 'affiliate', 'package',
+  ]).optional(),
+  trackingUrl: z.string().url().optional().or(z.literal('')),
+  promoMessage: z.string().optional(),
+  autoUpdateYoutube: z.boolean().optional(),
 });
 
-const sponsorUpdateSchema = sponsorSchema.partial().extend({
+const sponsorCreateSchema = sponsorBaseSchema.refine(
+  (data) => (data.episodeIds?.length ?? 0) > 0 || !!data.episodeId,
+  { message: 'Au moins un épisode est requis', path: ['episodeIds'] },
+);
+
+const sponsorUpdateSchema = sponsorBaseSchema.partial().extend({
   episodeId: z.number().int().positive().optional(),
 });
 
@@ -36,6 +51,8 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
       page: req.query.page ? Number(req.query.page) : 1,
       limit: req.query.limit ? Number(req.query.limit) : 20,
       status: req.query.status as never,
+      contractStatus: req.query.contractStatus as never,
+      contractType: req.query.contractType as never,
       episodeId: req.query.episodeId ? Number(req.query.episodeId) : undefined,
       search: req.query.search as string | undefined,
       minAmount: req.query.minAmount ? Number(req.query.minAmount) : undefined,
@@ -58,9 +75,11 @@ export async function get(req: AuthRequest, res: Response, next: NextFunction) {
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const body = sponsorSchema.parse(req.body);
+    const body = sponsorCreateSchema.parse(req.body);
+    const episodeIds = body.episodeIds ?? (body.episodeId ? [body.episodeId] : undefined);
     const sponsor = await sponsorsService.createSponsor({
       ...body,
+      episodeIds,
       email: body.email || undefined,
     });
     res.status(201).json(sponsor);
@@ -75,6 +94,8 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
     const sponsor = await sponsorsService.updateSponsor(Number(req.params.id), {
       ...body,
       email: body.email || undefined,
+      logoUrl: body.logoUrl || null,
+      websiteUrl: body.websiteUrl || null,
     });
     res.json(sponsor);
   } catch (e) {

@@ -59,6 +59,69 @@ enum Platform {
   instagram
 }
 
+enum ContractType {
+  per_episode
+  monthly
+  campaign
+  recurring
+  annual
+  affiliate
+  package
+}
+
+enum ContractCrmStatus {
+  prospect
+  contacte
+  nego
+  confirme
+  refuse
+  partenaire_recurrent
+}
+
+enum ContractStatus {
+  draft
+  active
+  paused
+  expired
+  cancelled
+}
+
+enum YoutubeUpdateStatus {
+  pending
+  success
+  failed
+  skipped
+}
+
+enum YoutubeLogAction {
+  description_updated
+  comment_pinned
+  comment_deleted
+  rollback
+  description_restored
+}
+
+enum YoutubeLogTrigger {
+  manual
+  cron
+  contract_activation
+  contract_expiry
+}
+
+enum YoutubeQueueAction {
+  update_description
+  pin_comment
+  delete_comment
+  restore_description
+}
+
+enum YoutubeQueueStatus {
+  pending
+  processing
+  done
+  failed
+}
+
 model User {
   id            Int            @id @default(autoincrement()) @db.UnsignedInt
   fullname      String         @db.VarChar(255)
@@ -70,6 +133,7 @@ model User {
   updatedAt     DateTime       @updatedAt @map("updated_at")
   tasks         Task[]         @relation("AssignedTasks")
   notifications Notification[]
+  activityLogs  ActivityLog[]
   refreshTokens RefreshToken[]
 
   @@map("users")
@@ -165,12 +229,15 @@ model Episode {
   listens               Int       @default(0) @db.UnsignedInt
   views                 Int       @default(0) @db.UnsignedInt
   shares                Int       @default(0) @db.UnsignedInt
-  completionRate        Decimal?  @map("completion_rate") @db.Decimal(5, 2)
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  guest                 Guest     @relation(fields: [guestId], references: [id], onDelete: Cascade)
-  shorts                Short[]
-  sponsors              Sponsor[]
+  completionRate              Decimal?  @map("completion_rate") @db.Decimal(5, 2)
+  youtubeDescriptionOriginal  String?   @map("youtube_description_original") @db.LongText
+  youtubePinnedCommentId      String?   @map("youtube_pinned_comment_id") @db.VarChar(100)
+  createdAt                   DateTime  @default(now()) @map("created_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
+  guest                       Guest     @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  shorts                      Short[]
+  sponsors                    Sponsor[]
+  contractEpisodes            ContractEpisode[]
 
   @@index([youtubeVideoId])
   @@index([publicationDate])
@@ -199,6 +266,9 @@ model Sponsor {
   id          Int           @id @default(autoincrement()) @db.UnsignedInt
   episodeId   Int           @map("episode_id") @db.UnsignedInt
   name        String        @default("") @db.VarChar(255)
+  logoUrl     String?       @map("logo_url") @db.VarChar(500)
+  websiteUrl  String?       @map("website_url") @db.VarChar(500)
+  niche       String?       @db.VarChar(100)
   contactName String?       @map("contact_name") @db.VarChar(255)
   email       String?       @db.VarChar(255)
   phone       String?       @db.VarChar(50)
@@ -211,11 +281,110 @@ model Sponsor {
   isRecurring Boolean       @default(false) @map("is_recurring")
   deletedAt   DateTime?     @map("deleted_at")
   episode     Episode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  contracts   SponsorContract[]
 
   @@index([episodeId])
   @@index([status, amount])
   @@index([deletedAt])
   @@map("sponsors")
+}
+
+model SponsorContract {
+  id                         Int               @id @default(autoincrement()) @db.UnsignedInt
+  sponsorId                  Int               @map("sponsor_id") @db.UnsignedInt
+  contractType               ContractType      @default(per_episode) @map("contract_type")
+  crmStatus                  ContractCrmStatus @default(prospect) @map("crm_status")
+  contractStatus             ContractStatus    @default(draft) @map("contract_status")
+  startDate                  DateTime?         @map("start_date") @db.Date
+  endDate                    DateTime?         @map("end_date") @db.Date
+  amount                     Decimal           @default(0) @db.Decimal(12, 2)
+  currency                   String            @default("MAD") @db.VarChar(3)
+  commissionRate             Decimal?          @map("commission_rate") @db.Decimal(5, 2)
+  promoMessage               String?           @map("promo_message") @db.Text
+  trackingUrl                String?           @map("tracking_url") @db.VarChar(500)
+  discountCode               String?           @map("discount_code") @db.VarChar(100)
+  youtubeDescriptionTemplate String?           @map("youtube_description_template") @db.Text
+  autoUpdateYoutube          Boolean           @default(true) @map("auto_update_youtube")
+  notes                      String?           @db.Text
+  migratedFromSponsorId      Int?              @unique @map("migrated_from_sponsor_id") @db.UnsignedInt
+  deletedAt                  DateTime?         @map("deleted_at")
+  createdAt                  DateTime          @default(now()) @map("created_at")
+  updatedAt                  DateTime          @updatedAt @map("updated_at")
+  sponsor                    Sponsor           @relation(fields: [sponsorId], references: [id], onDelete: Restrict)
+  episodes                   ContractEpisode[]
+  youtubeLogs                SponsorYoutubeLog[]
+  syncQueue                  YoutubeSyncQueue[]
+
+  @@index([sponsorId])
+  @@index([contractStatus])
+  @@index([crmStatus])
+  @@index([startDate, endDate])
+  @@index([deletedAt])
+  @@map("sponsor_contracts")
+}
+
+model ContractEpisode {
+  id                  Int                 @id @default(autoincrement()) @db.UnsignedInt
+  contractId          Int                 @map("contract_id") @db.UnsignedInt
+  episodeId           Int                 @map("episode_id") @db.UnsignedInt
+  youtubeVideoId      String?             @map("youtube_video_id") @db.VarChar(50)
+  youtubeUpdateStatus YoutubeUpdateStatus @default(pending) @map("youtube_update_status")
+  youtubeUpdatedAt    DateTime?           @map("youtube_updated_at")
+  youtubeUpdateError  String?             @map("youtube_update_error") @db.Text
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  contract            SponsorContract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  episode             Episode             @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, episodeId])
+  @@index([episodeId])
+  @@index([youtubeVideoId])
+  @@index([youtubeUpdateStatus])
+  @@map("contract_episodes")
+}
+
+model SponsorYoutubeLog {
+  id              Int               @id @default(autoincrement()) @db.UnsignedInt
+  contractId      Int?              @map("contract_id") @db.UnsignedInt
+  youtubeVideoId  String            @map("youtube_video_id") @db.VarChar(50)
+  action          YoutubeLogAction
+  oldDescription  String?           @map("old_description") @db.LongText
+  newDescription  String?           @map("new_description") @db.LongText
+  oldComment      String?           @map("old_comment") @db.Text
+  newComment      String?           @map("new_comment") @db.Text
+  triggeredBy     YoutubeLogTrigger @default(manual) @map("triggered_by")
+  success         Boolean           @default(false)
+  errorMessage    String?           @map("error_message") @db.Text
+  createdAt       DateTime          @default(now()) @map("created_at")
+  contract        SponsorContract?  @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([contractId])
+  @@index([youtubeVideoId])
+  @@index([action])
+  @@index([success])
+  @@index([createdAt])
+  @@map("sponsor_youtube_logs")
+}
+
+model YoutubeSyncQueue {
+  id             Int                @id @default(autoincrement()) @db.UnsignedInt
+  youtubeVideoId String             @map("youtube_video_id") @db.VarChar(50)
+  contractId     Int?               @map("contract_id") @db.UnsignedInt
+  action         YoutubeQueueAction
+  payload        Json?
+  status         YoutubeQueueStatus @default(pending)
+  attempts       Int                @default(0) @db.UnsignedInt
+  lastError      String?            @map("last_error") @db.Text
+  scheduledAt    DateTime           @default(now()) @map("scheduled_at")
+  processedAt    DateTime?          @map("processed_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  contract       SponsorContract?   @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([youtubeVideoId])
+  @@index([contractId])
+  @@map("youtube_sync_queue")
 }
 
 model Task {
@@ -237,14 +406,28 @@ model Task {
 model Notification {
   id        Int      @id @default(autoincrement()) @db.UnsignedInt
   userId    Int      @map("user_id") @db.UnsignedInt
+  type      String?  @db.VarChar(50)
   title     String   @db.VarChar(255)
   content   String   @db.Text
+  link      String?  @db.VarChar(512)
   isRead    Boolean  @default(false) @map("is_read")
   createdAt DateTime @default(now()) @map("created_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead])
+  @@index([type, createdAt])
   @@map("notifications")
+}
+
+model ActivityLog {
+  id        Int      @id @default(autoincrement()) @db.UnsignedInt
+  message   String   @db.Text
+  userId    Int?     @map("user_id") @db.UnsignedInt
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@map("activity_logs")
 }
 
 model PlatformToken {

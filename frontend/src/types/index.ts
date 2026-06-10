@@ -6,6 +6,39 @@ export interface User {
   avatar?: string | null;
 }
 
+export interface AppNotification {
+  id: number;
+  type: string | null;
+  title: string;
+  message: string;
+  read: boolean;
+  link: string | null;
+  createdAt: string;
+}
+
+export interface DashboardTask {
+  id: number;
+  title: string;
+  status: string;
+  dueDate: string | null;
+  guestName: string;
+  assignee: string | null;
+}
+
+export interface ActivityLogEntry {
+  id: number;
+  message: string;
+  date: string;
+  userId?: number | null;
+}
+
+export interface EditorialEvent {
+  date: string;
+  type: 'shooting' | 'publication';
+  label: string;
+  guestId: number;
+}
+
 export interface PipelineStage {
   id: number;
   name: string;
@@ -37,6 +70,9 @@ export interface Sponsor {
   id: number;
   episodeId: number;
   name: string;
+  logoUrl?: string | null;
+  websiteUrl?: string | null;
+  niche?: string | null;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -48,6 +84,85 @@ export interface Sponsor {
   endDate?: string | null;
   isRecurring?: boolean;
   episode?: Episode;
+  contracts?: SponsorContract[];
+}
+
+export type ContractType =
+  | 'per_episode'
+  | 'monthly'
+  | 'campaign'
+  | 'recurring'
+  | 'annual'
+  | 'affiliate'
+  | 'package';
+
+export type ContractStatus = 'draft' | 'active' | 'paused' | 'expired' | 'cancelled';
+
+export interface SponsorContract {
+  id: number;
+  sponsorId: number;
+  contractType: ContractType;
+  crmStatus: string;
+  contractStatus: ContractStatus;
+  startDate?: string | null;
+  endDate?: string | null;
+  amount: string | number;
+  currency: string;
+  commissionRate?: string | number | null;
+  promoMessage?: string | null;
+  trackingUrl?: string | null;
+  discountCode?: string | null;
+  youtubeDescriptionTemplate?: string | null;
+  autoUpdateYoutube: boolean;
+  notes?: string | null;
+  sponsor?: Sponsor;
+  episodes?: ContractEpisode[];
+  _count?: { episodes: number };
+}
+
+export interface ContractEpisode {
+  id: number;
+  contractId: number;
+  episodeId: number;
+  youtubeVideoId?: string | null;
+  youtubeUpdateStatus: string;
+  episode?: Episode;
+  contract?: SponsorContract;
+}
+
+export interface SponsorYoutubeLog {
+  id: number;
+  contractId?: number | null;
+  youtubeVideoId: string;
+  action: string;
+  success: boolean;
+  errorMessage?: string | null;
+  createdAt: string;
+  contract?: { sponsor?: { name: string } };
+}
+
+export interface SponsorConflictDetails {
+  contractId: number;
+  sponsorId: number;
+  sponsorName: string;
+  contractType: string;
+  contractStatus: string;
+  startDate: string | null;
+  endDate: string | null;
+  episodes: Array<{
+    id: number;
+    title: string | null;
+    episodeNumber: number | null;
+    guestName: string | null;
+  }>;
+}
+
+export interface SponsorDashboardStats {
+  activeContracts: number;
+  expiringWithin30Days: number;
+  pendingYoutubeQueue: number;
+  monthRevenue: number;
+  prevMonthRevenue: number;
 }
 
 export interface Episode {
@@ -77,6 +192,7 @@ export interface Episode {
   completionRate?: string | number | null;
   shorts?: Short[];
   sponsors?: Sponsor[];
+  contractEpisodes?: ContractEpisode[];
   guest?: Guest;
 }
 

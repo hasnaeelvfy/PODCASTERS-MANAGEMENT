@@ -17,6 +17,7 @@ import { api, ApiError } from '@/lib/api';
 import type { Episode, Guest } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePermissions } from '@/hooks/usePermissions';
+import { CONTRACT_STATUS_LABELS, CONTRACT_TYPE_LABELS } from '@/lib/sponsor-utils';
 import {
   initials,
   formatDateTime,
@@ -89,7 +90,11 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
   const isPublished = stage?.position === 6;
   const isRecording = stage?.position === 5 || stage?.position === 4;
   const reach = calcReach(ep || undefined);
-  const revenue = (ep?.sponsors || []).reduce((s, x) => s + Number(x.amount), 0);
+  const activeContractRevenue = (ep?.contractEpisodes || [])
+    .filter((l) => l.contract?.contractStatus === 'active')
+    .reduce((s, l) => s + Number(l.contract?.amount ?? 0), 0);
+  const legacyRevenue = (ep?.sponsors || []).reduce((s, x) => s + Number(x.amount), 0);
+  const revenue = activeContractRevenue > 0 ? activeContractRevenue : legacyRevenue;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 overflow-x-hidden">
@@ -142,26 +147,29 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
             ) : (
               <span className="text-sm text-white/50">{stage?.name}</span>
             )}
-            <div className="flex flex-row items-center gap-2 md:gap-3 shrink-0">
-              {canEdit && (
-                <Link href={`/guests/${guestId}/edit`} className="inline-flex items-center">
-                  <GlowButton variant="ghost" size="sm" className="h-9">
-                    Modifier
+            {(canEdit || canDelete) && (
+              <div className="flex items-center justify-start md:justify-end gap-2 w-full md:w-auto md:ml-auto shrink-0">
+                {canEdit && (
+                  <Link href={`/guests/${guestId}/edit`} className="inline-flex">
+                    <GlowButton variant="ghost" size="sm" className="!h-9 !min-h-[36px] px-3">
+                      Modifier
+                    </GlowButton>
+                  </Link>
+                )}
+                {canDelete && (
+                  <GlowButton
+                    variant="danger"
+                    size="sm"
+                    className="!h-9 !min-h-[36px] px-3 md:!w-9 md:!min-w-[36px] md:!p-0 inline-flex items-center justify-center gap-1.5 shrink-0"
+                    onClick={handleDeleteGuest}
+                    aria-label="Supprimer l'invité"
+                  >
+                    <span className="md:hidden">Supprimer</span>
+                    <Trash2 className="w-4 h-4 hidden md:block" />
                   </GlowButton>
-                </Link>
-              )}
-              {canDelete && (
-                <GlowButton
-                  variant="danger"
-                  size="sm"
-                  className="h-9 w-9 p-0 flex items-center justify-center shrink-0"
-                  onClick={handleDeleteGuest}
-                  aria-label="Supprimer l'invité"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </GlowButton>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </GlowCard>
@@ -284,7 +292,13 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
           {isPublished && ep && (
             <>
               <ShortsPanel episodeId={ep.id} shorts={ep.shorts || []} guestId={guestId} />
-              <SponsorsPanel episodeId={ep.id} sponsors={ep.sponsors || []} guestId={guestId} mobileAccordion={isMobile} />
+              <SponsorsPanel
+                episodeId={ep.id}
+                sponsors={ep.sponsors || []}
+                contractEpisodes={ep.contractEpisodes || []}
+                guestId={guestId}
+                mobileAccordion={isMobile}
+              />
             </>
           )}
         </div>
@@ -361,8 +375,14 @@ function parseNonNegativeInt(value: string): number {
 }
 
 function youtubeSyncErrorMessage(err: unknown): string {
-  if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
-    return 'Vidéo introuvable ou URL invalide';
+  if (err instanceof ApiError) {
+    if (err.status === 400 || err.status === 404) {
+      return err.message.includes('YOUTUBE_API_KEY')
+        ? 'Clé API YouTube manquante — configurez-la dans Paramètres'
+        : 'Vidéo introuvable ou URL invalide';
+    }
+    if (err.status === 500) return 'Erreur serveur — vérifiez la clé API YouTube dans Paramètres';
+    return err.message;
   }
   if (err instanceof Error) return err.message;
   return 'Impossible de récupérer les stats YouTube';
@@ -384,6 +404,7 @@ function mergeEpisodeYoutubeStats(guest: Guest | undefined, synced: Episode): Gu
       lastYoutubeSync: synced.lastYoutubeSync ?? synced.lastSyncAt ?? guest.episode.lastYoutubeSync,
       lastSyncAt: synced.lastSyncAt ?? guest.episode.lastSyncAt,
       views: synced.views ?? synced.youtubeViews ?? guest.episode.views,
+      shares: synced.shares ?? guest.episode.shares,
     },
   };
 }
@@ -411,7 +432,6 @@ function MetricsFields({
   const qc = useQueryClient();
   const [form, setForm] = useState({
     listens: ep.listens,
-    shares: ep.shares,
     completion: ep.completionRate?.toString() || '',
     pub: ep.publicationDate ? String(ep.publicationDate).slice(0, 10) : '',
     youtubeEpisodeUrl: ep.youtubeEpisodeUrl || '',
@@ -423,15 +443,18 @@ function MetricsFields({
   const [loadingViews, setLoadingViews] = useState(false);
   const [viewsWarning, setViewsWarning] = useState(false);
   const [displayViews, setDisplayViews] = useState(ep.youtubeViews ?? 0);
+  const [displayShares, setDisplayShares] = useState(ep.shares ?? 0);
 
   useEffect(() => {
     setDisplayViews(ep.youtubeViews ?? 0);
-  }, [ep.youtubeViews]);
+    setDisplayShares(ep.shares ?? 0);
+  }, [ep.youtubeViews, ep.shares]);
 
   const syncYoutubeStats = useCallback(async () => {
     const url = form.youtubeEpisodeUrl.trim() || ep.youtubeEpisodeUrl || '';
     if (!url) {
       setDisplayViews(0);
+      setDisplayShares(0);
       setViewsWarning(false);
       return null;
     }
@@ -449,6 +472,7 @@ function MetricsFields({
       const synced = result.episode ?? result.stats;
       if (synced) {
         setDisplayViews(synced.youtubeViews ?? 0);
+        setDisplayShares(synced.shares ?? 0);
         qc.setQueryData<Guest>(['guest', guestId], (old) => mergeEpisodeYoutubeStats(old, synced));
       }
       await qc.invalidateQueries({ queryKey: ['guest', guestId] });
@@ -456,6 +480,7 @@ function MetricsFields({
       return synced;
     } catch (err) {
       setDisplayViews(0);
+      setDisplayShares(0);
       setViewsWarning(true);
       setErrors((prev) => ({
         ...prev,
@@ -476,7 +501,6 @@ function MetricsFields({
   const handleSave = async () => {
     const newErrors: Record<string, string> = {};
     if (form.listens < 0) newErrors.listens = 'Valeur minimale : 0';
-    if (form.shares < 0) newErrors.shares = 'Valeur minimale : 0';
     if (form.completion) {
       const c = parseFloat(form.completion);
       if (Number.isNaN(c) || c < 0 || c > 100) {
@@ -502,7 +526,6 @@ function MetricsFields({
 
       await onSave({
         listens: Math.max(0, Math.floor(form.listens)),
-        shares: Math.max(0, Math.floor(form.shares)),
         completionRate,
         publicationDate: form.pub || undefined,
         youtubeEpisodeUrl: form.youtubeEpisodeUrl.trim() || undefined,
@@ -513,6 +536,7 @@ function MetricsFields({
         await syncYoutubeStats();
       } else {
         setDisplayViews(0);
+        setDisplayShares(0);
         setViewsWarning(false);
       }
 
@@ -559,16 +583,21 @@ function MetricsFields({
           </div>
           <p className="text-[10px] text-white/35 mt-1">Récupéré automatiquement via l&apos;API YouTube</p>
         </div>
-        <Input
-          label="Partages"
-          type="number"
-          min={0}
-          step={1}
-          value={form.shares}
-          disabled={!canEdit}
-          error={errors.shares}
-          onChange={(e) => setForm({ ...form, shares: parseNonNegativeInt(e.target.value) })}
-        />
+        <div className="flex flex-col">
+          <label className="input-label">Partages</label>
+          <div className="relative">
+            <input
+              className="input-base bg-white/[0.03] cursor-default text-[var(--text-primary)] pr-10"
+              readOnly
+              value={loadingViews ? 'Chargement…' : formatNumber(displayShares)}
+              aria-busy={loadingViews}
+            />
+            {loadingViews && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400 animate-spin" />
+            )}
+          </div>
+          <p className="text-[10px] text-white/35 mt-1">Récupéré automatiquement via l&apos;API YouTube</p>
+        </div>
         <Input
           label="Complétion %"
           type="number"
@@ -932,6 +961,7 @@ function ShortsPanel({
 function SponsorsPanel({
   episodeId,
   sponsors,
+  contractEpisodes = [],
   guestId,
   mobileAccordion = false,
 }: {
@@ -946,12 +976,19 @@ function SponsorsPanel({
     phone?: string | null;
     notes?: string | null;
   }[];
+  contractEpisodes?: import('@/types').ContractEpisode[];
   guestId: number;
   mobileAccordion?: boolean;
 }) {
   const qc = useQueryClient();
   const { canCreate } = usePermissions();
-  const total = sponsors.reduce((s, x) => s + Number(x.amount), 0);
+  const contractRows = contractEpisodes
+    .map((l) => l.contract)
+    .filter((c): c is NonNullable<typeof c> => Boolean(c?.sponsor));
+  const contractTotal = contractRows.reduce((s, c) => s + Number(c.amount ?? 0), 0);
+  const legacyTotal = sponsors.reduce((s, x) => s + Number(x.amount), 0);
+  const total = contractRows.length > 0 ? contractTotal : legacyTotal;
+  const hasAny = sponsors.length > 0 || contractRows.length > 0;
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -1017,12 +1054,34 @@ function SponsorsPanel({
 
   const panelBody = (
     <>
-      {sponsors.length === 0 && !showForm && (
+      {!hasAny && !showForm && (
         <p className="text-sm text-[var(--text-muted)] py-2 mb-2">Aucun sponsor enregistré.</p>
       )}
 
       <div className="space-y-2 mb-3">
-        {sponsors.map((s) => (
+        {contractRows.map((c) => (
+          <div key={`contract-${c.id}`} className="card p-3 flex items-start justify-between gap-3 min-h-[56px] border border-violet-400/20">
+            <div className="min-w-0">
+              <Link href={`/sponsors/${c.sponsor!.id}`} className="text-sm font-semibold text-violet-300 hover:underline">
+                🤝 {c.sponsor!.name}
+              </Link>
+              <p className="text-xs mt-0.5 text-[var(--text-muted)]">
+                {CONTRACT_TYPE_LABELS[c.contractType] || c.contractType}
+                {' · '}
+                <span className={c.contractStatus === 'active' ? 'text-emerald-400' : ''}>
+                  {CONTRACT_STATUS_LABELS[c.contractStatus] || c.contractStatus}
+                </span>
+              </p>
+              {c.promoMessage && (
+                <p className="text-[10px] text-[var(--text-dimmed)] mt-1 line-clamp-2">{c.promoMessage}</p>
+              )}
+            </div>
+            <span className="text-sm font-bold text-emerald-400 tabular-nums shrink-0">
+              {formatNumber(Number(c.amount))} {c.currency || 'MAD'}
+            </span>
+          </div>
+        ))}
+        {contractRows.length === 0 && sponsors.map((s) => (
           <div key={s.id} className="card p-3 flex items-start justify-between gap-3 min-h-[56px]">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--text-primary)]">{s.name}</p>
@@ -1121,8 +1180,8 @@ function SponsorsPanel({
     return (
       <Accordion
         title="Sponsors"
-        subtitle={total > 0 ? `${formatNumber(total)} MAD · ${sponsors.length} sponsor${sponsors.length > 1 ? 's' : ''}` : `${sponsors.length} sponsor${sponsors.length !== 1 ? 's' : ''}`}
-        defaultOpen={sponsors.length > 0}
+        subtitle={total > 0 ? `${formatNumber(total)} MAD · ${contractRows.length || sponsors.length} sponsor${(contractRows.length || sponsors.length) > 1 ? 's' : ''}` : `${contractRows.length || sponsors.length} sponsor${(contractRows.length || sponsors.length) !== 1 ? 's' : ''}`}
+        defaultOpen={hasAny}
       >
         {panelBody}
       </Accordion>

@@ -5,12 +5,13 @@ import {
   clearAuth,
 } from './auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public conflict?: import('@/types').SponsorConflictDetails,
   ) {
     super(message);
   }
@@ -70,11 +71,16 @@ async function request<T>(path: string, options: RequestInit = {}, retried = fal
     const body = await res.json().catch(() => ({})) as {
       error?: string;
       details?: Record<string, string[] | undefined>;
+      conflict?: import('@/types').SponsorConflictDetails;
     };
     const detailMsg = body.details
       ? Object.values(body.details).flat().find(Boolean)
       : undefined;
-    throw new ApiError(res.status, detailMsg || body.error || res.statusText);
+    throw new ApiError(
+      res.status,
+      detailMsg || body.error || res.statusText,
+      body.conflict,
+    );
   }
 
   if (res.status === 204) return undefined as T;
@@ -147,11 +153,20 @@ export const api = {
     delete: (id: number) => request(`/shorts/${id}`, { method: 'DELETE' }),
   },
   sponsors: {
-    list: (params?: { page?: number; limit?: number; status?: string; search?: string }) => {
+    list: (params?: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      contractStatus?: string;
+      contractType?: string;
+      search?: string;
+    }) => {
       const q = new URLSearchParams();
       if (params?.page) q.set('page', String(params.page));
       if (params?.limit) q.set('limit', String(params.limit));
       if (params?.status) q.set('status', params.status);
+      if (params?.contractStatus) q.set('contractStatus', params.contractStatus);
+      if (params?.contractType) q.set('contractType', params.contractType);
       if (params?.search) q.set('search', params.search);
       const qs = q.toString();
       return request<import('@/types').PaginatedSponsors>(`/sponsors${qs ? `?${qs}` : ''}`);
@@ -164,8 +179,64 @@ export const api = {
       request<import('@/types').Sponsor>(`/sponsors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: number) => request(`/sponsors/${id}`, { method: 'DELETE' }),
   },
+  sponsorContracts: {
+    list: (params?: Record<string, string | number | undefined>) => {
+      const q = new URLSearchParams();
+      if (params) {
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== '') q.set(k, String(v));
+        });
+      }
+      const qs = q.toString();
+      return request<{ data: import('@/types').SponsorContract[]; pagination: unknown }>(
+        `/sponsor-contracts${qs ? `?${qs}` : ''}`,
+      );
+    },
+    get: (id: number) => request<import('@/types').SponsorContract>(`/sponsor-contracts/${id}`),
+    create: (data: Record<string, unknown>) =>
+      request<import('@/types').SponsorContract>('/sponsor-contracts', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: number, data: Record<string, unknown>) =>
+      request<import('@/types').SponsorContract>(`/sponsor-contracts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: number) => request(`/sponsor-contracts/${id}`, { method: 'DELETE' }),
+    activate: (id: number, forceOverlap?: boolean) =>
+      request<import('@/types').SponsorContract>(`/sponsor-contracts/${id}/activate`, {
+        method: 'POST',
+        body: JSON.stringify({ forceOverlap }),
+      }),
+    pause: (id: number) =>
+      request<import('@/types').SponsorContract>(`/sponsor-contracts/${id}/pause`, { method: 'POST' }),
+    cancel: (id: number) =>
+      request<import('@/types').SponsorContract>(`/sponsor-contracts/${id}/cancel`, { method: 'POST' }),
+    preview: (id: number) => request<{ block: string }>(`/sponsor-contracts/${id}/preview`),
+    dashboardStats: () => request<import('@/types').SponsorDashboardStats>('/sponsor-contracts/dashboard-stats'),
+    activeForEpisode: (episodeId: number) =>
+      request<{ contract: import('@/types').SponsorContract | null }>(
+        `/sponsor-contracts/episodes/${episodeId}/active-sponsor`,
+      ),
+    youtubeLogs: (params?: { page?: number; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      const qs = q.toString();
+      return request<{ data: import('@/types').SponsorYoutubeLog[]; pagination: unknown }>(
+        `/sponsor-contracts/youtube-logs${qs ? `?${qs}` : ''}`,
+      );
+    },
+    rollback: (videoId: string) =>
+      request<{ success: boolean }>(`/sponsor-contracts/youtube-logs/${videoId}/rollback`, {
+        method: 'POST',
+      }),
+  },
   dashboard: {
     stats: () => request<import('@/types').PremiumDashboard>('/dashboard/stats'),
+    editorialCalendar: () =>
+      request<import('@/types').EditorialEvent[]>('/dashboard/editorial-calendar'),
   },
   youtube: {
     test: () => request<{ ok: boolean; connected?: boolean; message: string }>('/youtube/test'),
@@ -187,6 +258,8 @@ export const api = {
     get: () => request<Record<string, string>>('/settings'),
     update: (data: Record<string, string | null>) =>
       request<Record<string, string>>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+    testEmail: () =>
+      request<{ ok: boolean; message: string }>('/settings/test-email', { method: 'POST' }),
     users: () => request<import('@/types').User[]>('/settings/users'),
   },
   users: {
@@ -195,6 +268,27 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ role }),
       }),
+  },
+  notifications: {
+    list: () =>
+      request<{
+        unreadCount: number;
+        notifications: import('@/types').AppNotification[];
+      }>('/notifications'),
+    markRead: (id: number) =>
+      request<import('@/types').AppNotification>(`/notifications/${id}/read`, { method: 'PATCH' }),
+    markAllRead: () =>
+      request<{ success: boolean }>('/notifications/read-all', { method: 'PATCH' }),
+    delete: (id: number) =>
+      request<{ success: boolean }>(`/notifications/${id}`, { method: 'DELETE' }),
+  },
+  tasks: {
+    list: () => request<import('@/types').DashboardTask[]>('/tasks'),
+    markDone: (id: number) =>
+      request<import('@/types').DashboardTask>(`/tasks/${id}`, { method: 'PATCH' }),
+  },
+  activity: {
+    list: () => request<import('@/types').ActivityLogEntry[]>('/activity'),
   },
   analytics: {
     platforms: () =>

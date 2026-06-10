@@ -40,6 +40,7 @@ function getOAuthConfig(platform: Platform): OAuthConfig | null {
         scopes: [
           'https://www.googleapis.com/auth/yt-analytics.readonly',
           'https://www.googleapis.com/auth/youtube.readonly',
+          'https://www.googleapis.com/auth/youtube.force-ssl',
         ],
         extraAuthParams: { access_type: 'offline', prompt: 'consent' },
       };

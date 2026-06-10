@@ -3,16 +3,19 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { DollarSign, Users, Handshake, Star, Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { KpiCard } from '@/components/dashboard/KpiCard';
 import { KpiCardSkeleton } from '@/components/ui/Skeleton';
 import { SponsorModal, type SponsorFormData } from '@/components/sponsors/SponsorModal';
-import { api } from '@/lib/api';
+import { SponsorConflictModal } from '@/components/sponsors/SponsorConflictModal';
+import { api, ApiError } from '@/lib/api';
 import { useToast } from '@/contexts/ToastContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { CONTRACT_STATUS_LABELS, CONTRACT_TYPE_LABELS } from '@/lib/sponsor-utils';
 import { formatNumber, SPONSOR_STATUS_LABELS } from '@/lib/utils';
-import type { Sponsor } from '@/types';
+import type { Sponsor, SponsorConflictDetails } from '@/types';
 
 function statusBadge(status: string) {
   const map: Record<string, string> = {
@@ -28,8 +31,11 @@ export default function SponsorsPage() {
   const { canCreate, canEdit, canDelete } = usePermissions();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [contractStatusFilter, setContractStatusFilter] = useState('');
+  const [contractTypeFilter, setContractTypeFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Sponsor | null>(null);
+  const [conflict, setConflict] = useState<SponsorConflictDetails | null>(null);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['sponsor-stats'],
@@ -37,8 +43,14 @@ export default function SponsorsPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sponsors', search, statusFilter],
-    queryFn: () => api.sponsors.list({ search: search || undefined, status: statusFilter || undefined, limit: 50 }),
+    queryKey: ['sponsors', search, statusFilter, contractStatusFilter, contractTypeFilter],
+    queryFn: () => api.sponsors.list({
+      search: search || undefined,
+      status: statusFilter || undefined,
+      contractStatus: contractStatusFilter || undefined,
+      contractType: contractTypeFilter || undefined,
+      limit: 50,
+    }),
   });
 
   const { data: episodes = [] } = useQuery({
@@ -48,21 +60,28 @@ export default function SponsorsPage() {
 
   const createMutation = useMutation({
     mutationFn: (d: SponsorFormData) => api.sponsors.create({
-      episodeId: d.episodeId,
+      episodeId: d.episodeIds[0] || d.episodeId,
+      episodeIds: d.episodeIds,
       name: d.name,
       contactName: d.contactName || undefined,
       email: d.email || undefined,
       phone: d.phone || undefined,
       sponsorType: d.sponsorType,
+      contractType: d.contractType,
       amount: Number(d.amount),
       status: d.status,
       startDate: d.startDate || undefined,
       endDate: d.endDate || undefined,
       isRecurring: d.isRecurring,
       notes: d.notes || undefined,
+      trackingUrl: d.trackingUrl || undefined,
+      promoMessage: d.promoMessage || undefined,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['sponsors'] }); qc.invalidateQueries({ queryKey: ['sponsor-stats'] }); toast.success('Sponsor créé'); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      if (e instanceof ApiError && e.status === 409 && e.conflict) return;
+      toast.error(e.message);
+    },
   });
 
   const updateMutation = useMutation({
@@ -83,103 +102,163 @@ export default function SponsorsPage() {
   });
 
   const handleSubmit = async (form: SponsorFormData) => {
-    if (editing) await updateMutation.mutateAsync({ id: editing.id, d: form });
-    else await createMutation.mutateAsync(form);
+    try {
+      if (editing) await updateMutation.mutateAsync({ id: editing.id, d: form });
+      else await createMutation.mutateAsync(form);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.conflict) {
+        setConflict(e.conflict);
+        return;
+      }
+      throw e;
+    }
   };
 
   const sponsors = data?.data || [];
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 max-w-full overflow-x-hidden">
       <TopBar title="Sponsors" showSearch={false} />
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4 md:mb-6 min-w-0">
         {statsLoading ? Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />) : stats && (
           <>
-            <KpiCard label="Revenus confirmés" value={`${formatNumber(stats.totalConfirmedRevenue)} MAD`} icon={DollarSign} accent="green" />
-            <KpiCard label="Sponsors actifs" value={stats.activeSponsors} icon={Users} accent="blue" />
-            <KpiCard label="En négociation" value={`${formatNumber(stats.inNegotiationAmount)} MAD`} icon={Handshake} accent="orange" />
-            <KpiCard label="Meilleur sponsor" value={stats.topSponsor?.name || '—'} icon={Star} accent="purple" />
+            <KpiCard compact label="Revenus confirmés" value={`${formatNumber(stats.totalConfirmedRevenue)} MAD`} icon={DollarSign} accent="green" />
+            <KpiCard compact label="Sponsors actifs" value={stats.activeSponsors} icon={Users} accent="blue" />
+            <KpiCard compact label="En négociation" value={`${formatNumber(stats.inNegotiationAmount)} MAD`} icon={Handshake} accent="orange" />
+            <KpiCard
+              compact
+              label="Meilleur sponsor"
+              value={stats.topSponsor?.name || '—'}
+              icon={Star}
+              accent="purple"
+            />
           </>
         )}
       </div>
 
       {/* Filters + Add */}
-      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 mb-4">
-        <div className="flex items-center gap-2 bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-xl px-3 h-11 flex-1 sm:min-w-[200px] sm:max-w-sm">
-          <Search className="w-4 h-4 text-[var(--text-muted)]" />
-          <input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent text-sm outline-none w-full text-[var(--text-primary)]" />
+      <div className="flex flex-col gap-3 mb-4 min-w-0">
+        <div className="flex items-center gap-2.5 w-full min-w-0 h-11 px-3 bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-xl focus-within:border-violet-400/40 transition-colors">
+          <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0 pointer-events-none" aria-hidden />
+          <input
+            type="search"
+            placeholder="Rechercher un sponsor..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-0 h-full bg-transparent text-base sm:text-sm text-[var(--text-primary)] placeholder:text-[var(--text-dimmed)] outline-none border-0 p-0"
+          />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-          className="input-base h-11 w-full sm:w-auto text-sm">
-          <option value="">Tous les statuts</option>
-          {Object.entries(SPONSOR_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        {canCreate && (
-        <button type="button" className="btn-primary min-h-[48px] w-full sm:w-auto justify-center" onClick={() => { setEditing(null); setModalOpen(true); }}>
-          <Plus className="w-4 h-4" /> Ajouter
-        </button>
-        )}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="input-base h-11 w-full text-sm rounded-xl"
+          >
+            <option value="">CRM — tous statuts</option>
+            {Object.entries(SPONSOR_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <select
+            value={contractStatusFilter}
+            onChange={(e) => setContractStatusFilter(e.target.value)}
+            className="input-base h-11 w-full text-sm rounded-xl"
+          >
+            <option value="">Contrat — tous statuts</option>
+            {Object.entries(CONTRACT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <select
+            value={contractTypeFilter}
+            onChange={(e) => setContractTypeFilter(e.target.value)}
+            className="input-base h-11 w-full text-sm rounded-xl"
+          >
+            <option value="">Tous les types</option>
+            {Object.entries(CONTRACT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch min-w-0">
+          {canCreate && (
+            <button
+              type="button"
+              className="btn-primary min-h-[48px] w-full sm:w-auto sm:shrink-0 justify-center rounded-xl"
+              onClick={() => { setEditing(null); setModalOpen(true); }}
+            >
+              <Plus className="w-4 h-4" /> Ajouter un sponsor
+            </button>
+          )}
+        </div>
       </div>
 
       {/* List (mobile) / Table (desktop) */}
-      <div className="glass-panel overflow-hidden">
+      <div className="glass-panel overflow-hidden min-w-0 max-w-full rounded-xl md:rounded-2xl">
         {isLoading ? (
           <div className="p-8 text-center text-[var(--text-muted)]">Chargement...</div>
         ) : sponsors.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="p-8 md:p-12 text-center">
             <p className="text-sm text-[var(--text-muted)]">Aucun sponsor trouvé.</p>
           </div>
         ) : (
           <>
             <div className="md:hidden divide-y divide-[var(--border-subtle)]">
               {sponsors.map((s: Sponsor) => (
-                <div key={s.id} className="p-4 flex items-start gap-3 min-h-[72px] active:bg-white/[0.02]">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-[var(--text-primary)]">
+                <div key={s.id} className="p-4 min-w-0 active:bg-white/[0.02]">
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/sponsors/${s.id}`} className="text-sm font-semibold text-[var(--text-primary)] truncate block hover:text-violet-300">
                         {s.name}{s.isRecurring ? ' ⭐' : ''}
+                      </Link>
+                      {s.niche && (
+                        <p className="text-[10px] text-violet-400/80 mt-0.5">{s.niche}</p>
+                      )}
+                      {s.contracts && s.contracts.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {s.contracts.slice(0, 2).map((c) => (
+                            <span key={c.id} className="badge badge-violet text-[8px]">
+                              {CONTRACT_TYPE_LABELS[c.contractType] || c.contractType}
+                              {' · '}
+                              {CONTRACT_STATUS_LABELS[c.contractStatus] || c.contractStatus}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-base font-bold text-emerald-400 tabular-nums mt-0.5">
+                        {formatNumber(Number(s.amount))} MAD
                       </p>
-                      <span className="text-sm font-bold text-emerald-400 tabular-nums shrink-0">
-                        {formatNumber(Number(s.amount))}
-                      </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                      <span className={`badge text-[9px] ${statusBadge(s.status)}`}>
-                        {SPONSOR_STATUS_LABELS[s.status] || s.status}
-                      </span>
-                      <span className="text-[10px] text-[var(--text-muted)] truncate">
-                        {s.episode?.title || `Ép. #${s.episodeId}`}
-                      </span>
-                    </div>
-                    {(s.contactName || s.email) && (
-                      <p className="text-[10px] text-[var(--text-dimmed)] mt-1 truncate">
-                        {s.contactName || s.email}
-                      </p>
-                    )}
+                    <span className={`badge text-[9px] shrink-0 max-w-[42%] truncate ${statusBadge(s.status)}`}>
+                      {SPONSOR_STATUS_LABELS[s.status] || s.status}
+                    </span>
                   </div>
+
+                  <p className="text-[11px] text-[var(--text-muted)] mt-2 truncate">
+                    {s.episode?.title || `Épisode #${s.episodeId}`}
+                  </p>
+                  {(s.contactName || s.email) && (
+                    <p className="text-[10px] text-[var(--text-dimmed)] mt-1 truncate">
+                      {s.contactName || s.email}
+                    </p>
+                  )}
+
                   {(canEdit || canDelete) && (
-                    <div className="flex flex-col gap-1 shrink-0">
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border-subtle)]">
                       {canEdit && (
                         <button
                           type="button"
-                          className="btn-ghost p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          className="btn-ghost flex-1 min-h-[44px] flex items-center justify-center gap-2 text-sm rounded-xl"
                           onClick={() => { setEditing(s); setModalOpen(true); }}
-                          aria-label="Modifier"
                         >
                           <Pencil className="w-4 h-4" />
+                          Modifier
                         </button>
                       )}
                       {canDelete && (
                         <button
                           type="button"
-                          className="btn-ghost p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-red-400"
+                          className="btn-ghost flex-1 min-h-[44px] flex items-center justify-center gap-2 text-sm text-red-400 rounded-xl"
                           onClick={() => deleteMutation.mutate(s.id)}
-                          aria-label="Supprimer"
                         >
                           <Trash2 className="w-4 h-4" />
+                          Supprimer
                         </button>
                       )}
                     </div>
@@ -193,6 +272,7 @@ export default function SponsorsPage() {
                 <thead>
                   <tr className="border-b border-[var(--border-subtle)] text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
                     <th className="text-left p-4">Nom</th>
+                    <th className="text-left p-4 hidden lg:table-cell">Contrat</th>
                     <th className="text-left p-4">Contact</th>
                     <th className="text-left p-4 hidden lg:table-cell">Épisode</th>
                     <th className="text-right p-4">Montant</th>
@@ -203,7 +283,26 @@ export default function SponsorsPage() {
                 <tbody>
                   {sponsors.map((s: Sponsor) => (
                     <tr key={s.id} className="border-b border-[var(--border-subtle)] hover:bg-white/[0.02] transition-colors">
-                      <td className="p-4 font-semibold">{s.name}{s.isRecurring ? ' ⭐' : ''}</td>
+                      <td className="p-4 font-semibold">
+                        <Link href={`/sponsors/${s.id}`} className="hover:text-violet-300">{s.name}</Link>
+                        {s.isRecurring ? ' ⭐' : ''}
+                        {s.niche && <p className="text-[10px] text-[var(--text-muted)] font-normal">{s.niche}</p>}
+                      </td>
+                      <td className="p-4 hidden lg:table-cell">
+                        {s.contracts && s.contracts[0] ? (
+                          <div className="space-y-0.5">
+                            <span className="badge badge-violet text-[9px]">
+                              {CONTRACT_TYPE_LABELS[s.contracts[0].contractType]}
+                            </span>
+                            <p className="text-[10px] text-[var(--text-muted)]">
+                              {CONTRACT_STATUS_LABELS[s.contracts[0].contractStatus]}
+                              {s.contracts[0]._count?.episodes != null && ` · ${s.contracts[0]._count.episodes} ép.`}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-[var(--text-dimmed)]">—</span>
+                        )}
+                      </td>
                       <td className="p-4 text-[var(--text-muted)]">{s.contactName || s.email || '—'}</td>
                       <td className="p-4 text-[var(--text-muted)] hidden lg:table-cell truncate max-w-[160px]">
                         {s.episode?.title || `Ép. #${s.episodeId}`}
@@ -234,6 +333,11 @@ export default function SponsorsPage() {
       </div>
 
       <SponsorModal open={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} episodes={episodes} initial={editing} />
+      <SponsorConflictModal
+        open={!!conflict}
+        conflict={conflict}
+        onClose={() => setConflict(null)}
+      />
     </motion.div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -10,6 +11,7 @@ import { api } from '@/lib/api';
 import { useSearch, matchesSearch } from '@/contexts/SearchContext';
 import { formatYoutubeViewsLabel, LANGUAGE_LABELS } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { CONTRACT_TYPE_LABELS, getActiveContractFromEpisode } from '@/lib/sponsor-utils';
 import type { Episode } from '@/types';
 
 function statusBadge(position?: number) {
@@ -24,32 +26,74 @@ function statusBadge(position?: number) {
 
 export default function EpisodesPage() {
   const { query, hasQuery } = useSearch();
+  const [sponsorFilter, setSponsorFilter] = useState('');
+  const [contractTypeFilter, setContractTypeFilter] = useState('');
 
   const { data: episodes = [], isLoading } = useQuery({
     queryKey: ['episodes'],
     queryFn: () => api.episodes.list(),
   });
 
+  const { data: sponsorsData } = useQuery({
+    queryKey: ['sponsors-list-filter'],
+    queryFn: () => api.sponsors.list({ limit: 100 }),
+  });
+  const sponsorOptions = sponsorsData?.data ?? [];
+
   const published = episodes.filter(
     (ep) => ep.guest?.stage?.position === 5 || ep.guest?.stage?.position === 6,
   );
 
-  const filtered = hasQuery
-    ? published.filter((ep) => {
-        const g = ep.guest!;
-        return matchesSearch(query, [
-          ep.title,
-          g.firstName,
-          g.lastName,
-          g.company,
-          `${g.firstName} ${g.lastName}`,
-        ]);
-      })
-    : published;
+  const filtered = published
+    .filter((ep) => {
+      if (!hasQuery) return true;
+      const g = ep.guest!;
+      return matchesSearch(query, [
+        ep.title,
+        g.firstName,
+        g.lastName,
+        g.company,
+        `${g.firstName} ${g.lastName}`,
+      ]);
+    })
+    .filter((ep) => {
+      if (!sponsorFilter) return true;
+      const sponsorId = Number(sponsorFilter);
+      const active = getActiveContractFromEpisode(ep);
+      return active?.id === sponsorId;
+    })
+    .filter((ep) => {
+      if (!contractTypeFilter) return true;
+      const link = ep.contractEpisodes?.find((l) => l.contract?.contractStatus === 'active');
+      return link?.contract?.contractType === contractTypeFilter;
+    });
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-hidden">
       <TopBar title="Épisodes" />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <select
+          value={sponsorFilter}
+          onChange={(e) => setSponsorFilter(e.target.value)}
+          className="input-base h-11 w-full text-sm rounded-xl"
+        >
+          <option value="">Tous les sponsors</option>
+          {sponsorOptions.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}{s.niche ? ` · ${s.niche}` : ''}</option>
+          ))}
+        </select>
+        <select
+          value={contractTypeFilter}
+          onChange={(e) => setContractTypeFilter(e.target.value)}
+          className="input-base h-11 w-full text-sm rounded-xl"
+        >
+          <option value="">Tous les types de contrat</option>
+          {Object.entries(CONTRACT_TYPE_LABELS).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+      </div>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -82,6 +126,7 @@ export default function EpisodesPage() {
               const g = ep.guest!;
               const viewsLabel = formatYoutubeViewsLabel(ep);
               const badge = statusBadge(g.stage?.position);
+              const activeSponsor = getActiveContractFromEpisode(ep);
 
               return (
                 <motion.div
@@ -108,6 +153,11 @@ export default function EpisodesPage() {
                           {g.company}
                           {g.language ? ` · ${LANGUAGE_LABELS[g.language]}` : ''}
                         </p>
+                        {activeSponsor && (
+                          <span className="inline-block mt-1.5 badge badge-violet text-[8px]">
+                            🤝 {activeSponsor.name}
+                          </span>
+                        )}
                         {viewsLabel && (
                           <p className="mt-1.5 text-[10px] md:text-[11px] text-violet-300 font-semibold tabular-nums">
                             {viewsLabel}

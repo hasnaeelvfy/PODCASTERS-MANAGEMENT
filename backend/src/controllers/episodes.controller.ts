@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as episodesService from '../services/episodes.service';
+import * as contractService from '../services/contract.service';
 import { AuthRequest } from '../middleware/auth';
 
 // URL validation regex
@@ -67,6 +68,17 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
   try {
     await episodesService.deleteEpisode(Number(req.params.id));
     res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function activeSponsor(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const episodeId = Number(req.params.id);
+    const date = req.query.date ? new Date(String(req.query.date)) : new Date();
+    const contract = await contractService.getActiveContractForEpisode(episodeId, date);
+    res.json({ contract });
   } catch (e) {
     next(e);
   }

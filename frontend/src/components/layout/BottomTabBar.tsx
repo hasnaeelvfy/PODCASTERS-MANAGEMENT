@@ -28,14 +28,14 @@ export function BottomTabBar() {
           <Link key={tab.href} href={tab.href} aria-label={tab.label} title={tab.label}>
             <div
               className={cn(
-                'flex items-center justify-center h-14 min-h-[56px] transition-all relative',
+                'flex items-center justify-center h-11 min-h-[44px] transition-all relative',
                 active ? 'text-violet-400' : 'text-[var(--text-muted)] active:scale-95',
               )}
             >
               {active && (
-                <span className="absolute top-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-violet-400" />
+                <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-violet-400" />
               )}
-              <Icon className="w-5 h-5" strokeWidth={active ? 2.5 : 2} />
+              <Icon className="w-[20px] h-[20px]" strokeWidth={active ? 2.5 : 2} />
             </div>
           </Link>
         );

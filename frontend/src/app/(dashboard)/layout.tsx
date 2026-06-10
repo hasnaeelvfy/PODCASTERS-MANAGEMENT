@@ -37,10 +37,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <SearchProvider>
-      <div className="min-h-screen bg-[var(--bg-primary)] flex">
+      <div className="min-h-screen bg-[var(--bg-primary)] flex min-w-0 max-w-[100vw] overflow-x-hidden">
         <Sidebar />
         <div className="flex-1 flex flex-col md:ml-[240px] min-w-0">
-          <main className="flex-1 px-4 py-4 md:px-8 md:py-8 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-8 min-w-0 overflow-x-hidden max-w-full">
+          <main className="flex-1 px-4 py-4 md:px-8 md:py-8 pb-[calc(2.75rem+env(safe-area-inset-bottom))] md:pb-8 min-w-0 overflow-x-hidden max-w-full">
             {children}
           </main>
         </div>
