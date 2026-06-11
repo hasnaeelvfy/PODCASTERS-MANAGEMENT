@@ -1,21 +1,15 @@
 import { Prisma } from '@prisma/client';
+import { episodeSponsorRelationsInclude, episodeSponsorRelationsIncludeAllContracts } from '../lib/episode-includes';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
+import { parseSpotifyEpisodeId } from './spotify-data.service';
 
 export async function listEpisodes() {
   return prisma.episode.findMany({
     include: {
       guest: { include: { stage: true } },
       shorts: true,
-      sponsors: true,
-      contractEpisodes: {
-        where: {
-          contract: { deletedAt: null, contractStatus: 'active' },
-        },
-        include: {
-          contract: { include: { sponsor: true } },
-        },
-      },
+      ...episodeSponsorRelationsInclude,
     },
     orderBy: [{ episodeNumber: 'asc' }, { createdAt: 'desc' }],
   });
@@ -24,7 +18,11 @@ export async function listEpisodes() {
 export async function getEpisodeById(id: number) {
   const episode = await prisma.episode.findUnique({
     where: { id },
-    include: { guest: true, shorts: true, sponsors: true },
+    include: {
+      guest: true,
+      shorts: true,
+      ...episodeSponsorRelationsIncludeAllContracts,
+    },
   });
   if (!episode) throw new AppError(404, 'Episode not found');
   return episode;
@@ -67,7 +65,7 @@ export async function createEpisode(data: {
       shares: data.shares ?? 0,
       completionRate: data.completionRate != null ? new Prisma.Decimal(data.completionRate) : null,
     },
-    include: { guest: true, shorts: true, sponsors: true },
+    include: { guest: true, shorts: true, ...episodeSponsorRelationsIncludeAllContracts },
   });
 }
 
@@ -92,6 +90,9 @@ export async function updateEpisode(
   const youtubeUrlChanged =
     data.youtubeEpisodeUrl !== undefined &&
     data.youtubeEpisodeUrl !== existing.youtubeEpisodeUrl;
+  const spotifyUrlChanged =
+    data.spotifyEpisodeUrl !== undefined &&
+    data.spotifyEpisodeUrl !== existing.spotifyEpisodeUrl;
 
   return prisma.episode.update({
     where: { id },
@@ -109,6 +110,14 @@ export async function updateEpisode(
             lastYoutubeSync: null,
           }
         : {}),
+      ...(spotifyUrlChanged
+        ? {
+            spotifyEpisodeId: data.spotifyEpisodeUrl
+              ? parseSpotifyEpisodeId(data.spotifyEpisodeUrl)
+              : null,
+            lastSpotifySync: null,
+          }
+        : {}),
       recordingDate: data.recordingDate ? new Date(data.recordingDate) : undefined,
       publicationDate: data.publicationDate ? new Date(data.publicationDate) : undefined,
       completionRate:
@@ -118,7 +127,7 @@ export async function updateEpisode(
             ? new Prisma.Decimal(data.completionRate)
             : undefined,
     },
-    include: { guest: true, shorts: true, sponsors: true },
+    include: { guest: true, shorts: true, ...episodeSponsorRelationsIncludeAllContracts },
   });
 }
 
@@ -181,6 +190,6 @@ export async function upsertEpisodeForGuest(
             ? new Prisma.Decimal(data.completionRate)
             : undefined,
     },
-    include: { shorts: true, sponsors: true },
+    include: { shorts: true, ...episodeSponsorRelationsIncludeAllContracts },
   });
 }

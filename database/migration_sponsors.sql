@@ -2,7 +2,8 @@
 -- Prodcasters CRM — Migration système sponsoring dynamique YouTube
 -- =============================================================================
 -- Fichier     : migration_sponsors.sql
--- Usage       : Importer en une seule exécution dans phpMyAdmin (onglet SQL)
+-- Équivalent Prisma : backend/prisma/migrations/20250610_sponsor_dynamic_system/migration.sql
+-- Usage       : phpMyAdmin (manuel) OU `npx prisma migrate deploy` sur nouvel environnement
 -- Sécurité    : Additif uniquement — ne supprime aucune colonne ni table existante
 -- Idempotence : Les colonnes/tables déjà présentes sont ignorées ; la migration
 --               de données ne s'exécute qu'une fois (via migrated_from_sponsor_id)

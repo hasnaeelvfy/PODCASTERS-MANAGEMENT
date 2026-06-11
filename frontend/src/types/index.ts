@@ -141,6 +141,14 @@ export interface SponsorYoutubeLog {
   contract?: { sponsor?: { name: string } };
 }
 
+export interface EpisodeConflictInfo {
+  episodeId: number;
+  contractId: number;
+  sponsorName: string;
+  startDate: string | null;
+  endDate: string | null;
+}
+
 export interface SponsorConflictDetails {
   contractId: number;
   sponsorId: number;
@@ -176,7 +184,9 @@ export interface Episode {
   youtubeLink?: string | null;
   youtubeEpisodeUrl?: string | null;
   spotifyEpisodeUrl?: string | null;
+  spotifyEpisodeId?: string | null;
   spotifyPublicationDate?: string | null;
+  lastSpotifySync?: string | null;
   youtubeVideoId?: string | null;
   youtubeViews?: number;
   youtubeLikes?: number;

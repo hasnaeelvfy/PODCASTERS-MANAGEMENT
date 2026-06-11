@@ -4,13 +4,18 @@ export function Input({
   label,
   className,
   error,
+  hint,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label?: string; error?: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & { label?: string; error?: string; hint?: string }) {
   return (
     <div className="flex flex-col">
       {label && <label className="input-label">{label}</label>}
       <input className={cn('input-base', className)} {...props} />
-      {error && <p className="text-[10px] text-red-400 font-semibold mt-1.5">{error}</p>}
+      {error ? (
+        <p className="text-[10px] text-red-400 font-semibold mt-1.5">{error}</p>
+      ) : hint ? (
+        <p className="text-[10px] text-[var(--text-dimmed)] mt-1">{hint}</p>
+      ) : null}
     </div>
   );
 }

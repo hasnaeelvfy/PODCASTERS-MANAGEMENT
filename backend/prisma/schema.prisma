@@ -225,7 +225,9 @@ model Episode {
   lastSyncAt            DateTime? @map("last_sync_at")
   youtubeEpisodeUrl     String?   @map("youtube_episode_url") @db.VarChar(512)
   spotifyEpisodeUrl     String?   @map("spotify_episode_url") @db.VarChar(512)
+  spotifyEpisodeId      String?   @map("spotify_episode_id") @db.VarChar(100)
   spotifyPublicationDate DateTime? @map("spotify_publication_date") @db.Date
+  lastSpotifySync       DateTime? @map("last_spotify_sync")
   listens               Int       @default(0) @db.UnsignedInt
   views                 Int       @default(0) @db.UnsignedInt
   shares                Int       @default(0) @db.UnsignedInt

@@ -10,7 +10,9 @@ import { KpiCard } from '@/components/dashboard/KpiCard';
 import { KpiCardSkeleton } from '@/components/ui/Skeleton';
 import { SponsorModal, type SponsorFormData } from '@/components/sponsors/SponsorModal';
 import { SponsorConflictModal } from '@/components/sponsors/SponsorConflictModal';
+import { ConfirmDeleteModal } from '@/components/ui/ConfirmDeleteModal';
 import { api, ApiError } from '@/lib/api';
+import { sponsorDeleteMessage } from '@/lib/delete-messages';
 import { useToast } from '@/contexts/ToastContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { CONTRACT_STATUS_LABELS, CONTRACT_TYPE_LABELS } from '@/lib/sponsor-utils';
@@ -36,6 +38,7 @@ export default function SponsorsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Sponsor | null>(null);
   const [conflict, setConflict] = useState<SponsorConflictDetails | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Sponsor | null>(null);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['sponsor-stats'],
@@ -76,6 +79,7 @@ export default function SponsorsPage() {
       notes: d.notes || undefined,
       trackingUrl: d.trackingUrl || undefined,
       promoMessage: d.promoMessage || undefined,
+      autoUpdateYoutube: d.autoUpdateYoutube,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['sponsors'] }); qc.invalidateQueries({ queryKey: ['sponsor-stats'] }); toast.success('Sponsor créé'); },
     onError: (e: Error) => {
@@ -86,20 +90,40 @@ export default function SponsorsPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, d }: { id: number; d: SponsorFormData }) => api.sponsors.update(id, {
-      episodeId: d.episodeId, name: d.name, contactName: d.contactName || undefined,
+      episodeId: d.episodeId,
+      episodeIds: d.episodeIds && d.episodeIds.length > 0 ? d.episodeIds : undefined,
+      name: d.name, contactName: d.contactName || undefined,
       email: d.email || undefined, phone: d.phone || undefined, sponsorType: d.sponsorType,
       amount: Number(d.amount), status: d.status, startDate: d.startDate || undefined,
       endDate: d.endDate || undefined, isRecurring: d.isRecurring, notes: d.notes || undefined,
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sponsors'] }); qc.invalidateQueries({ queryKey: ['sponsor-stats'] }); toast.success('Sponsor mis à jour'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sponsors'] });
+      qc.invalidateQueries({ queryKey: ['sponsor-stats'] });
+      qc.invalidateQueries({ queryKey: ['episodes'] });
+      qc.invalidateQueries({ queryKey: ['guests'] });
+      toast.success('Sponsor mis à jour');
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.sponsors.delete(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sponsors'] }); qc.invalidateQueries({ queryKey: ['sponsor-stats'] }); toast.success('Sponsor supprimé'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sponsors'] });
+      qc.invalidateQueries({ queryKey: ['sponsor-stats'] });
+      qc.invalidateQueries({ queryKey: ['episodes'] });
+      qc.invalidateQueries({ queryKey: ['guests'] });
+      setDeleteTarget(null);
+      toast.success('Sponsor supprimé');
+    },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    await deleteMutation.mutateAsync(deleteTarget.id);
+  };
 
   const handleSubmit = async (form: SponsorFormData) => {
     try {
@@ -255,7 +279,7 @@ export default function SponsorsPage() {
                         <button
                           type="button"
                           className="btn-ghost flex-1 min-h-[44px] flex items-center justify-center gap-2 text-sm text-red-400 rounded-xl"
-                          onClick={() => deleteMutation.mutate(s.id)}
+                          onClick={() => setDeleteTarget(s)}
                         >
                           <Trash2 className="w-4 h-4" />
                           Supprimer
@@ -318,7 +342,7 @@ export default function SponsorsPage() {
                           <button className="btn-ghost p-2" onClick={() => { setEditing(s); setModalOpen(true); }}><Pencil className="w-3.5 h-3.5" /></button>
                           )}
                           {canDelete && (
-                          <button className="btn-ghost p-2 text-red-400" onClick={() => deleteMutation.mutate(s.id)}><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button className="btn-ghost p-2 text-red-400" onClick={() => setDeleteTarget(s)}><Trash2 className="w-3.5 h-3.5" /></button>
                           )}
                         </div>
                         )}
@@ -337,6 +361,13 @@ export default function SponsorsPage() {
         open={!!conflict}
         conflict={conflict}
         onClose={() => setConflict(null)}
+      />
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        message={deleteTarget ? sponsorDeleteMessage(deleteTarget.name) : ''}
+        loading={deleteMutation.isPending}
+        onClose={() => !deleteMutation.isPending && setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
       />
     </motion.div>
   );

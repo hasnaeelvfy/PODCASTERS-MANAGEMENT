@@ -18,6 +18,13 @@ router.get(
 );
 
 router.get('/oauth/:platform/callback', analyticsController.callback);
+/** Legacy alias — some dashboards register /api/analytics/spotify/callback without /oauth/ */
+router.get('/spotify/callback', (req, res) => {
+  res.redirect(
+    307,
+    `/api/analytics/oauth/spotify/callback?${new URLSearchParams(req.query as Record<string, string>).toString()}`,
+  );
+});
 
 router.delete(
   '/connections/:platform',

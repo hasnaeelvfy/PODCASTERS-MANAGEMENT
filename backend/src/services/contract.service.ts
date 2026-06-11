@@ -31,6 +31,20 @@ function startOfDay(d: Date): Date {
   return x;
 }
 
+/** Paid spot types that block each other on the same episode + period. */
+const PAID_SPOT_CONTRACT_TYPES: ContractType[] = [
+  'per_episode',
+  'monthly',
+  'campaign',
+  'annual',
+  'package',
+  'recurring',
+];
+
+function isPaidSpotContractType(contractType?: ContractType | null): boolean {
+  return Boolean(contractType && PAID_SPOT_CONTRACT_TYPES.includes(contractType));
+}
+
 function isContractActiveOnDate(
   contract: { contractStatus: ContractStatus; startDate: Date | null; endDate: Date | null },
   date: Date,
@@ -132,12 +146,14 @@ export async function checkOverlap(
   startDate: Date,
   endDate: Date | null,
   excludeContractId?: number,
+  newContractType?: ContractType,
 ): Promise<{
   hasOverlap: boolean;
   conflicting?: ContractWithRelations;
   overlappingEpisodeIds?: number[];
 }> {
   if (episodeIds.length === 0) return { hasOverlap: false };
+  if (!isPaidSpotContractType(newContractType)) return { hasOverlap: false };
 
   const candidates = await prisma.contractEpisode.findMany({
     where: {
@@ -145,6 +161,8 @@ export async function checkOverlap(
       contract: {
         deletedAt: null,
         contractStatus: 'active',
+        contractType: { in: PAID_SPOT_CONTRACT_TYPES },
+        sponsor: { deletedAt: null },
         ...(excludeContractId ? { id: { not: excludeContractId } } : {}),
       },
     },
@@ -174,6 +192,72 @@ export async function checkOverlap(
   }
 
   return { hasOverlap: false };
+}
+
+export interface EpisodeConflictInfo {
+  episodeId: number;
+  contractId: number;
+  sponsorName: string;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export async function getEpisodeConflicts(
+  episodeIds: number[],
+  startDate: Date,
+  endDate: Date | null,
+  excludeContractId?: number,
+  newContractType?: ContractType,
+): Promise<EpisodeConflictInfo[]> {
+  if (episodeIds.length === 0) return [];
+  if (!isPaidSpotContractType(newContractType)) return [];
+
+  const candidates = await prisma.contractEpisode.findMany({
+    where: {
+      episodeId: { in: episodeIds },
+      contract: {
+        deletedAt: null,
+        contractStatus: 'active',
+        contractType: { in: PAID_SPOT_CONTRACT_TYPES },
+        sponsor: { deletedAt: null },
+        ...(excludeContractId ? { id: { not: excludeContractId } } : {}),
+      },
+    },
+    include: {
+      contract: { include: contractInclude },
+    },
+  });
+
+  const newStart = startOfDay(startDate);
+  const newEnd = endDate ? startOfDay(endDate) : null;
+  const conflicts: EpisodeConflictInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const row of candidates) {
+    const c = row.contract;
+    const cStart = c.startDate ? startOfDay(c.startDate) : newStart;
+    const cEnd = c.endDate ? startOfDay(c.endDate) : null;
+
+    const overlaps =
+      (newEnd === null || cStart <= newEnd) &&
+      (cEnd === null || cEnd >= newStart);
+
+    if (!overlaps) continue;
+
+    const key = `${row.episodeId}-${c.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    conflicts.push({
+      episodeId: row.episodeId,
+      contractId: c.id,
+      sponsorName: c.sponsor.name,
+      startDate: c.startDate?.toISOString().slice(0, 10) ?? null,
+      endDate: c.endDate?.toISOString().slice(0, 10) ?? null,
+    });
+  }
+
+  return conflicts;
 }
 
 export interface CreateContractDto {
@@ -286,7 +370,7 @@ export async function createContract(data: CreateContractDto) {
   }
 
   if (episodeIds.length > 0 && !data.forceOverlap) {
-    const overlap = await checkOverlap(episodeIds, startDate, endDate);
+    const overlap = await checkOverlap(episodeIds, startDate, endDate, undefined, data.contractType);
     if (overlap.hasOverlap && overlap.conflicting) {
       throwContractOverlap(
         overlap.conflicting,
@@ -346,8 +430,12 @@ export async function updateContract(
   }
 
   const episodeIds = data.episodeIds;
-  if (episodeIds && episodeIds.length > 0 && !data.forceOverlap && startDate) {
-    const overlap = await checkOverlap(episodeIds, startDate, endDate, id);
+  const contractType = data.contractType ?? existing.contractType;
+  if (episodeIds && episodeIds.length > 0 && !data.forceOverlap) {
+    // Fall back to the existing start date (or today) so clearing the start date
+    // can't be used to bypass overlap detection.
+    const overlapStart = startDate ?? existing.startDate ?? new Date();
+    const overlap = await checkOverlap(episodeIds, overlapStart, endDate, id, contractType);
     if (overlap.hasOverlap && overlap.conflicting) {
       throwContractOverlap(
         overlap.conflicting,
@@ -403,11 +491,19 @@ export async function deleteContract(id: number) {
   });
 }
 
+export interface YoutubeApplySummary {
+  success: number;
+  failed: number;
+  queued: number;
+  skipped: number;
+}
+
 async function applyYoutubeForContract(
   contract: ContractWithRelations,
   triggeredBy: 'manual' | 'contract_activation' | 'contract_expiry' | 'cron',
-) {
-  if (!contract.autoUpdateYoutube) return;
+): Promise<YoutubeApplySummary> {
+  const summary: YoutubeApplySummary = { success: 0, failed: 0, queued: 0, skipped: 0 };
+  if (!contract.autoUpdateYoutube) return summary;
 
   for (const link of contract.episodes) {
     const videoId =
@@ -423,20 +519,41 @@ async function applyYoutubeForContract(
           youtubeUpdateError: 'Aucun ID vidéo YouTube',
         },
       });
+      summary.skipped++;
       continue;
     }
 
     try {
-      await youtubeSponsor.applyContractToVideo(videoId, contract, link.episodeId, triggeredBy);
-      await prisma.contractEpisode.update({
-        where: { id: link.id },
-        data: {
-          youtubeUpdateStatus: 'success',
-          youtubeUpdatedAt: new Date(),
-          youtubeUpdateError: null,
-          youtubeVideoId: videoId,
-        },
-      });
+      const result = await youtubeSponsor.applyContractToVideo(
+        videoId,
+        contract,
+        link.episodeId,
+        triggeredBy,
+      );
+      if (result === 'queued') {
+        // Quota exceeded → work is queued for retry. The enum has no 'queued'
+        // value, so use 'pending' (the not-yet-applied state) with a clear note.
+        await prisma.contractEpisode.update({
+          where: { id: link.id },
+          data: {
+            youtubeUpdateStatus: 'pending',
+            youtubeUpdateError: 'En file d\'attente — quota YouTube dépassé, réessai automatique',
+            youtubeVideoId: videoId,
+          },
+        });
+        summary.queued++;
+      } else {
+        await prisma.contractEpisode.update({
+          where: { id: link.id },
+          data: {
+            youtubeUpdateStatus: 'success',
+            youtubeUpdatedAt: new Date(),
+            youtubeUpdateError: null,
+            youtubeVideoId: videoId,
+          },
+        });
+        summary.success++;
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erreur YouTube';
       await prisma.contractEpisode.update({
@@ -446,12 +563,27 @@ async function applyYoutubeForContract(
           youtubeUpdateError: message.slice(0, 2000),
         },
       });
+      summary.failed++;
     }
   }
+
+  return summary;
 }
 
 export async function activateContract(id: number, forceOverlap = false) {
   const contract = await getContractById(id);
+
+  // Guard against resurrecting terminated contracts or double-activation.
+  if (contract.contractStatus === 'cancelled' || contract.contractStatus === 'expired') {
+    throw new AppError(
+      400,
+      'Impossible d\'activer un contrat annulé ou expiré. Créez un nouveau contrat.',
+    );
+  }
+  if (contract.contractStatus === 'active') {
+    return { ...contract, youtube: { success: 0, failed: 0, queued: 0, skipped: 0 } };
+  }
+
   const episodeIds = contract.episodes.map((e) => e.episodeId);
 
   if (!forceOverlap && contract.startDate) {
@@ -460,6 +592,7 @@ export async function activateContract(id: number, forceOverlap = false) {
       contract.startDate,
       contract.endDate,
       id,
+      contract.contractType,
     );
     if (overlap.hasOverlap && overlap.conflicting) {
       throwContractOverlap(
@@ -475,8 +608,8 @@ export async function activateContract(id: number, forceOverlap = false) {
     include: contractInclude,
   });
 
-  await applyYoutubeForContract(updated, 'contract_activation');
-  return updated;
+  const youtube = await applyYoutubeForContract(updated, 'contract_activation');
+  return { ...updated, youtube };
 }
 
 export async function pauseContract(id: number) {
@@ -497,7 +630,11 @@ export async function cancelContract(id: number) {
   });
 
   for (const link of contract.episodes) {
-    const videoId = link.youtubeVideoId;
+    const videoId =
+      link.youtubeVideoId ||
+      youtubeSponsor.resolveVideoId(
+        link.episode.youtubeEpisodeUrl || link.episode.youtubeLink || '',
+      );
     if (videoId) {
       try {
         await youtubeSponsor.restoreOriginalDescription(
@@ -506,6 +643,13 @@ export async function cancelContract(id: number) {
           contract.id,
           'contract_expiry',
         );
+
+        // If other sponsors are still active on this episode, re-render them so
+        // cancelling one contract doesn't wipe the remaining sponsors.
+        const remaining = await getActiveContractForEpisode(link.episodeId);
+        if (remaining && remaining.id !== contract.id) {
+          await applyYoutubeForContract(remaining, 'contract_expiry');
+        }
       } catch {
         /* logged inside service */
       }
@@ -520,7 +664,13 @@ export async function addEpisodesToContract(contractId: number, episodeIds: numb
   const meta = await resolveEpisodeVideoIds(episodeIds);
 
   if (contract.startDate) {
-    const overlap = await checkOverlap(episodeIds, contract.startDate, contract.endDate, contractId);
+    const overlap = await checkOverlap(
+      episodeIds,
+      contract.startDate,
+      contract.endDate,
+      contractId,
+      contract.contractType,
+    );
     if (overlap.hasOverlap && overlap.conflicting && contract.contractStatus === 'active') {
       throwContractOverlap(
         overlap.conflicting,
@@ -539,6 +689,102 @@ export async function addEpisodesToContract(contractId: number, episodeIds: numb
   });
 
   return getContractById(contractId);
+}
+
+/**
+ * Replace a contract's episode set with `episodeIds`, applying the difference:
+ * - removed episodes: restore their YouTube description (and re-render any other
+ *   sponsor still active on them);
+ * - added episodes: linked, then (if the contract is active) the sponsor block
+ *   is applied to YouTube.
+ * Returns the refreshed contract.
+ */
+export async function setContractEpisodes(contractId: number, episodeIds: number[]) {
+  const contract = await getContractById(contractId);
+  const desired = [...new Set(episodeIds)];
+  const currentIds = new Set(contract.episodes.map((l) => l.episodeId));
+  const desiredSet = new Set(desired);
+
+  const toAddIds = desired.filter((id) => !currentIds.has(id));
+  const toRemoveLinks = contract.episodes.filter((l) => !desiredSet.has(l.episodeId));
+
+  // Nothing changed → no-op.
+  if (toAddIds.length === 0 && toRemoveLinks.length === 0) {
+    return contract;
+  }
+
+  const isActive = contract.contractStatus === 'active';
+
+  // Block overlapping paid spots when adding to an active contract.
+  if (toAddIds.length > 0 && isActive && contract.startDate) {
+    const overlap = await checkOverlap(
+      toAddIds,
+      contract.startDate,
+      contract.endDate,
+      contractId,
+      contract.contractType,
+    );
+    if (overlap.hasOverlap && overlap.conflicting) {
+      throwContractOverlap(overlap.conflicting, overlap.overlappingEpisodeIds ?? toAddIds);
+    }
+  }
+
+  // Restore YouTube for removed episodes (and re-render any remaining sponsor).
+  if (isActive) {
+    for (const link of toRemoveLinks) {
+      const videoId =
+        link.youtubeVideoId ||
+        youtubeSponsor.resolveVideoId(
+          link.episode.youtubeEpisodeUrl || link.episode.youtubeLink || '',
+        );
+      if (!videoId) continue;
+      try {
+        await youtubeSponsor.restoreOriginalDescription(
+          videoId,
+          link.episodeId,
+          contract.id,
+          'manual',
+        );
+        const remaining = await getActiveContractForEpisode(link.episodeId);
+        if (remaining && remaining.id !== contract.id) {
+          await applyYoutubeForContract(remaining, 'manual');
+        }
+      } catch {
+        /* logged inside service */
+      }
+    }
+  }
+
+  // Apply DB diff.
+  if (toRemoveLinks.length > 0) {
+    await prisma.contractEpisode.deleteMany({
+      where: { contractId, episodeId: { in: toRemoveLinks.map((l) => l.episodeId) } },
+    });
+  }
+  if (toAddIds.length > 0) {
+    const meta = await resolveEpisodeVideoIds(toAddIds);
+    await prisma.contractEpisode.createMany({
+      data: meta.map((ep) => ({
+        contractId,
+        episodeId: ep.episodeId,
+        youtubeVideoId: ep.youtubeVideoId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  // Apply YouTube for newly added episodes when the contract is active.
+  const refreshed = await getContractById(contractId);
+  if (isActive && refreshed.autoUpdateYoutube && toAddIds.length > 0) {
+    const addedSet = new Set(toAddIds);
+    const addedContract: ContractWithRelations = {
+      ...refreshed,
+      episodes: refreshed.episodes.filter((l) => addedSet.has(l.episodeId)),
+    };
+    await applyYoutubeForContract(addedContract, 'manual');
+  }
+
+  return refreshed;
 }
 
 export async function expireDueContracts() {
@@ -561,7 +807,11 @@ export async function expireDueContracts() {
     });
 
     for (const link of contract.episodes) {
-      const videoId = link.youtubeVideoId;
+      const videoId =
+        link.youtubeVideoId ||
+        youtubeSponsor.resolveVideoId(
+          link.episode.youtubeEpisodeUrl || link.episode.youtubeLink || '',
+        );
       if (videoId) {
         await youtubeSponsor.restoreOriginalDescription(
           videoId,

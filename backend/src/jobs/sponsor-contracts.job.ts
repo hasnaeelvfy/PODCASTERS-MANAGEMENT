@@ -12,10 +12,14 @@ export function startSponsorContractsJob(): void {
     }
   });
 
-  cron.schedule('0 1 * * *', async () => {
+  // Drain the YouTube retry queue frequently (with per-item exponential backoff)
+  // so quota-deferred work doesn't wait a whole day to retry.
+  cron.schedule('*/15 * * * *', async () => {
     try {
       const result = await processYoutubeQueue(100);
-      console.log(`[SponsorContracts] Queue processed=${result.processed} failed=${result.failed}`);
+      if (result.processed > 0 || result.failed > 0) {
+        console.log(`[SponsorContracts] Queue processed=${result.processed} failed=${result.failed}`);
+      }
     } catch (err) {
       console.error('[SponsorContracts] Queue job failed:', err);
     }

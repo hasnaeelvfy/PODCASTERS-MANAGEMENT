@@ -69,9 +69,18 @@ export default function SponsorDetailPage() {
 
   const activate = useMutation({
     mutationFn: (id: number) => api.sponsorContracts.activate(id),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['sponsor-contracts', sponsorId] });
-      toast.success('Contrat activé');
+      qc.invalidateQueries({ queryKey: ['episodes'] });
+      qc.invalidateQueries({ queryKey: ['guests'] });
+      const yt = (data as { youtube?: { success: number; failed: number; queued: number; skipped: number } })?.youtube;
+      if (yt && (yt.failed > 0 || yt.queued > 0 || yt.skipped > 0)) {
+        toast.error(
+          `Contrat activé — YouTube : ${yt.success} OK, ${yt.failed} échec(s), ${yt.queued} en file, ${yt.skipped} ignoré(s). Voir les logs YouTube.`,
+        );
+      } else {
+        toast.success('Contrat activé');
+      }
     },
     onError: (e: Error) => {
       if (handleApiConflict(e)) return;

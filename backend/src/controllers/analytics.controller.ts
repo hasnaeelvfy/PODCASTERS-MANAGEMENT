@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import type { Platform } from '@prisma/client';
 import { analyticsService } from '../services/analytics.service';
+import { getSpotifyRedirectUri } from '../lib/spotify-oauth.config';
 import { oauthService } from '../services/oauth.service';
 import { syncPlatformStats } from '../services/platform-sync.service';
 import { AuthRequest } from '../middleware/auth';
@@ -41,7 +42,10 @@ export const analyticsController = {
         return next(new AppError(503, `OAuth non configuré pour ${platform}. Ajoutez les clés API dans .env`));
       }
       const url = oauthService.getAuthorizationUrl(platform, req.user!.userId);
-      res.json({ authorizationUrl: url });
+      res.json({
+        authorizationUrl: url,
+        ...(platform === 'spotify' ? { redirectUri: getSpotifyRedirectUri() } : {}),
+      });
     } catch (err) {
       next(err);
     }
@@ -49,11 +53,11 @@ export const analyticsController = {
 
   async callback(req: Request, res: Response) {
     const platform = req.params.platform as Platform;
-    const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
-
     try {
       if (!PLATFORMS.includes(platform)) {
-        return res.redirect(`${frontend}/integrations?status=error&platform=${platform}&message=invalid_platform`);
+        return res.redirect(
+          oauthService.getFrontendRedirect('error', platform, 'invalid_platform'),
+        );
       }
 
       const error = req.query.error as string | undefined;

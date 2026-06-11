@@ -69,6 +69,7 @@ export async function upsertPlatformToken(
   accessToken: string,
   refreshToken?: string | null,
   expiresAt?: Date | null,
+  scope?: string | null,
 ): Promise<void> {
   await prisma.platformToken.upsert({
     where: { platform },
@@ -77,15 +78,21 @@ export async function upsertPlatformToken(
       accessToken: encryptToken(accessToken),
       refreshToken: refreshToken ? encryptToken(refreshToken) : null,
       expiresAt: expiresAt ?? null,
+      scope: scope ?? null,
       lastSyncError: null,
     },
     update: {
       accessToken: encryptToken(accessToken),
       refreshToken: refreshToken ? encryptToken(refreshToken) : null,
       expiresAt: expiresAt ?? null,
+      ...(scope !== undefined && scope !== null ? { scope } : {}),
       lastSyncError: null,
     },
   });
 
-  await syncPlatformStats();
+  // Don't block the OAuth callback redirect on an external stats sync — a slow or
+  // failing platform API must not turn a successful connect into an error page.
+  void syncPlatformStats().catch((err) =>
+    console.error('[PlatformSync] post-connect sync failed:', err),
+  );
 }

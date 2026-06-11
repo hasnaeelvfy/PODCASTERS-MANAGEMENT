@@ -156,6 +156,38 @@ export async function activeForEpisode(req: AuthRequest, res: Response, next: Ne
   }
 }
 
+const checkConflictsSchema = z.object({
+  episodeIds: z.array(z.number().int().positive()).min(1),
+  startDate: z.string().min(1),
+  endDate: z.string().optional().nullable(),
+  excludeContractId: z.number().int().positive().optional(),
+  contractType: z.enum([
+    'per_episode',
+    'monthly',
+    'campaign',
+    'recurring',
+    'annual',
+    'affiliate',
+    'package',
+  ]).optional(),
+});
+
+export async function checkConflicts(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const body = checkConflictsSchema.parse(req.body);
+    const conflicts = await contractService.getEpisodeConflicts(
+      body.episodeIds,
+      new Date(body.startDate),
+      body.endDate ? new Date(body.endDate) : null,
+      body.excludeContractId,
+      body.contractType,
+    );
+    res.json({ conflicts });
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function listLogs(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     res.json(await contractService.listYoutubeLogs({

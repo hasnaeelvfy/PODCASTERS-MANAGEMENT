@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X, ExternalLink } from 'lucide-react';
@@ -28,9 +30,15 @@ function episodeLabel(ep: SponsorConflictDetails['episodes'][0]): string {
 }
 
 export function SponsorConflictModal({ open, onClose, conflict }: SponsorConflictModalProps) {
-  if (!conflict) return null;
+  const [mounted, setMounted] = useState(false);
 
-  return (
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!conflict || !mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -136,6 +144,7 @@ export function SponsorConflictModal({ open, onClose, conflict }: SponsorConflic
           </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

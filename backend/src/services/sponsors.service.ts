@@ -4,7 +4,7 @@ import { AppError } from '../middleware/errorHandler';
 import { logActivity } from './activity.service';
 import { broadcastNotification } from './notification.service';
 import { sendSponsorConfirmedEmail } from './notification-email.service';
-import { activateContract, createContract } from './contract.service';
+import { activateContract, createContract, setContractEpisodes } from './contract.service';
 
 export interface SponsorFilters {
   page?: number;
@@ -32,6 +32,10 @@ const sponsorInclude = {
       contractStatus: true,
       startDate: true,
       endDate: true,
+      promoMessage: true,
+      trackingUrl: true,
+      autoUpdateYoutube: true,
+      episodes: { select: { episodeId: true } },
       _count: { select: { episodes: true } },
     },
     orderBy: { createdAt: 'desc' as const },
@@ -226,6 +230,7 @@ export async function updateSponsor(
   id: number,
   data: Partial<{
     episodeId: number;
+    episodeIds: number[];
     name: string;
     logoUrl: string | null;
     websiteUrl: string | null;
@@ -243,16 +248,32 @@ export async function updateSponsor(
   }>,
 ) {
   const before = await getSponsorById(id);
+  const { episodeIds, ...sponsorData } = data;
   const updated = await prisma.sponsor.update({
     where: { id },
     data: {
-      ...data,
+      ...sponsorData,
       amount: data.amount !== undefined ? new Prisma.Decimal(data.amount) : undefined,
       startDate: data.startDate === null ? null : data.startDate ? new Date(data.startDate) : undefined,
       endDate: data.endDate === null ? null : data.endDate ? new Date(data.endDate) : undefined,
     },
     include: sponsorInclude,
   });
+
+  // Sync the modal's episode selection to the sponsor's primary contract so that
+  // episode badges (and YouTube descriptions) follow what the user selected.
+  if (episodeIds && episodeIds.length > 0) {
+    const contracts = await prisma.sponsorContract.findMany({
+      where: { sponsorId: id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, contractStatus: true },
+    });
+    const primary =
+      contracts.find((c) => c.contractStatus === 'active') ?? contracts[0];
+    if (primary) {
+      await setContractEpisodes(primary.id, episodeIds);
+    }
+  }
 
   if (data.status && data.status !== before.status) {
     const amount = Number(updated.amount);
@@ -280,37 +301,83 @@ export async function updateSponsor(
 
 export async function deleteSponsor(id: number) {
   await getSponsorById(id);
+  const now = new Date();
+  await prisma.sponsorContract.updateMany({
+    where: { sponsorId: id, deletedAt: null },
+    data: { deletedAt: now },
+  });
   return prisma.sponsor.update({
     where: { id },
-    data: { deletedAt: new Date() },
+    data: { deletedAt: now },
   });
 }
 
 export async function getSponsorStats() {
-  const sponsors = await prisma.sponsor.findMany({ where: { deletedAt: null } });
+  const sponsors = await prisma.sponsor.findMany({
+    where: { deletedAt: null },
+    include: {
+      contracts: { where: { deletedAt: null } },
+    },
+  });
 
-  const confirmed = sponsors.filter((s) => s.status === 'confirme' || s.status === 'partenaire_recurrent');
-  const active = sponsors.filter((s) => ['confirme', 'nego', 'partenaire_recurrent', 'contacte'].includes(s.status));
-  const inNegotiation = sponsors.filter((s) => s.status === 'nego');
+  const confirmedCrm = new Set(['confirme', 'partenaire_recurrent']);
+  const activeSponsorIds = new Set<number>();
+  let totalConfirmedRevenue = 0;
+  let inNegotiationAmount = 0;
+  const sponsorRevenue = new Map<number, { name: string; amount: number }>();
 
-  const totalConfirmedRevenue = confirmed.reduce((sum, s) => sum + Number(s.amount), 0);
-  const inNegotiationAmount = inNegotiation.reduce((sum, s) => sum + Number(s.amount), 0);
+  for (const sponsor of sponsors) {
+    if (sponsor.contracts.length > 0) {
+      for (const contract of sponsor.contracts) {
+        const amount = Number(contract.amount);
+        if (contract.contractStatus === 'active' && confirmedCrm.has(contract.crmStatus)) {
+          totalConfirmedRevenue += amount;
+          sponsorRevenue.set(sponsor.id, {
+            name: sponsor.name,
+            amount: (sponsorRevenue.get(sponsor.id)?.amount ?? 0) + amount,
+          });
+        }
+        if (
+          contract.crmStatus === 'nego' &&
+          !['cancelled', 'expired'].includes(contract.contractStatus)
+        ) {
+          inNegotiationAmount += amount;
+        }
+        if (contract.contractStatus === 'active') {
+          activeSponsorIds.add(sponsor.id);
+        }
+      }
+      continue;
+    }
+
+    const amount = Number(sponsor.amount);
+    if (sponsor.status === 'confirme' || sponsor.status === 'partenaire_recurrent') {
+      totalConfirmedRevenue += amount;
+      sponsorRevenue.set(sponsor.id, { name: sponsor.name, amount });
+    }
+    if (sponsor.status === 'nego') {
+      inNegotiationAmount += amount;
+    }
+    if (['confirme', 'nego', 'partenaire_recurrent', 'contacte'].includes(sponsor.status)) {
+      activeSponsorIds.add(sponsor.id);
+    }
+  }
 
   const byStatus: Record<string, number> = {};
   for (const s of sponsors) {
     byStatus[s.status] = (byStatus[s.status] || 0) + 1;
   }
 
-  const topSponsor = [...sponsors].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
+  const topEntry = [...sponsorRevenue.entries()].sort((a, b) => b[1].amount - a[1].amount)[0];
 
   return {
     totalConfirmedRevenue,
-    activeSponsors: active.length,
+    activeSponsors: activeSponsorIds.size,
     inNegotiationAmount,
     totalSponsors: sponsors.length,
     byStatus,
-    topSponsor: topSponsor
-      ? { id: topSponsor.id, name: topSponsor.name, amount: Number(topSponsor.amount) }
+    topSponsor: topEntry
+      ? { id: topEntry[0], name: topEntry[1].name, amount: topEntry[1].amount }
       : null,
   };
 }

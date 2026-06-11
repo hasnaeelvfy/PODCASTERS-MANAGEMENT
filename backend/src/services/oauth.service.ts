@@ -1,7 +1,18 @@
 import type { Platform } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import {
+  getSpotifyRedirectUri,
+  normalizeRedirectUri,
+  SPOTIFY_OAUTH_DEFAULT_REDIRECT_URI,
+} from '../lib/spotify-oauth.config';
 import { upsertPlatformToken } from './platform-sync.service';
+
+export {
+  getSpotifyRedirectUri,
+  normalizeRedirectUri,
+  SPOTIFY_OAUTH_DEFAULT_REDIRECT_URI,
+} from '../lib/spotify-oauth.config';
 
 const PLATFORMS: Platform[] = ['youtube', 'spotify'];
 
@@ -20,11 +31,16 @@ function envKey(platform: Platform, suffix: string): string {
   return `${platform.toUpperCase()}_${suffix}`;
 }
 
+export function getRedirectUri(platform: Platform): string {
+  const config = getOAuthConfig(platform);
+  return config?.redirectUri ?? SPOTIFY_OAUTH_DEFAULT_REDIRECT_URI;
+}
+
 function getOAuthConfig(platform: Platform): OAuthConfig | null {
   const commonRedirect = process.env.OAUTH_REDIRECT_BASE;
   const defaultRedirect = commonRedirect
-    ? `${commonRedirect}/analytics/oauth/${platform}/callback`
-    : `http://localhost:4000/api/analytics/oauth/${platform}/callback`;
+    ? `${normalizeRedirectUri(commonRedirect)}/analytics/oauth/${platform}/callback`
+    : `http://127.0.0.1:4000/api/analytics/oauth/${platform}/callback`;
 
   const configs: Record<Platform, () => OAuthConfig | null> = {
     youtube: () => {
@@ -46,16 +62,16 @@ function getOAuthConfig(platform: Platform): OAuthConfig | null {
       };
     },
     spotify: () => {
-      const clientId = process.env.SPOTIFY_CLIENT_ID;
-      const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+      const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
+      const clientSecret = process.env.SPOTIFY_CLIENT_SECRET?.trim();
       if (!clientId || !clientSecret) return null;
       return {
         clientId,
         clientSecret,
-        redirectUri: process.env.SPOTIFY_REDIRECT_URI || defaultRedirect,
+        redirectUri: getSpotifyRedirectUri(),
         authUrl: 'https://accounts.spotify.com/authorize',
         tokenUrl: 'https://accounts.spotify.com/api/token',
-        scopes: ['user-read-email', 'user-read-private'],
+        scopes: ['user-read-email', 'playlist-read-private', 'streaming'],
         useBasicAuth: true,
       };
     },
@@ -119,9 +135,16 @@ function verifyOAuthState(state: string): { platform: Platform; userId: number }
 async function exchangeCode(
   platform: Platform,
   code: string,
-): Promise<{ accessToken: string; refreshToken?: string; expiresAt?: Date }> {
+): Promise<{ accessToken: string; refreshToken?: string; expiresAt?: Date; scope?: string }> {
   const config = getOAuthConfig(platform);
   if (!config) throw new Error(`OAuth not configured for ${platform}`);
+
+  if (platform === 'spotify') {
+    console.log(
+      'Spotify token exchange redirect_uri:',
+      JSON.stringify(config.redirectUri),
+    );
+  }
 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
@@ -162,6 +185,7 @@ async function exchangeCode(
   let accessToken = String(data.access_token ?? '');
   let refreshToken = data.refresh_token ? String(data.refresh_token) : undefined;
   let expiresIn = typeof data.expires_in === 'number' ? data.expires_in : undefined;
+  let scope = typeof data.scope === 'string' ? data.scope : undefined;
 
   if (platform === 'instagram' && accessToken) {
     const longLived = await fetch(
@@ -185,12 +209,19 @@ async function exchangeCode(
     accessToken = String(tiktokData.access_token ?? accessToken);
     refreshToken = tiktokData.refresh_token ? String(tiktokData.refresh_token) : refreshToken;
     expiresIn = typeof tiktokData.expires_in === 'number' ? tiktokData.expires_in : expiresIn;
+    if (typeof tiktokData.scope === 'string') scope = tiktokData.scope;
   }
 
   if (!accessToken) throw new Error('No access token received');
 
+  if (!scope) {
+    scope = config.scopes.join(' ');
+  }
+
+  console.log(`[OAuth] ${platform} token exchange — granted scope:`, JSON.stringify(scope));
+
   const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined;
-  return { accessToken, refreshToken, expiresAt };
+  return { accessToken, refreshToken, expiresAt, scope };
 }
 
 export const oauthService = {
@@ -201,6 +232,14 @@ export const oauthService = {
   getAuthorizationUrl(platform: Platform, userId: number): string {
     const config = getOAuthConfig(platform);
     if (!config) throw new Error(`OAuth credentials missing for ${platform}`);
+
+    if (platform === 'spotify') {
+      console.log(
+        'SPOTIFY_REDIRECT_URI raw value:',
+        JSON.stringify(process.env.SPOTIFY_REDIRECT_URI),
+      );
+      console.log('redirect_uri being sent to Spotify:', JSON.stringify(config.redirectUri));
+    }
 
     const state = signOAuthState(platform, userId);
     const scopeSep = platform === 'youtube' || platform === 'spotify' ? ' ' : ',';
@@ -223,7 +262,15 @@ export const oauthService = {
       }
     }
 
-    return `${config.authUrl}?${params}`;
+    const authorizationUrl = `${config.authUrl}?${params}`;
+
+    if (platform === 'spotify') {
+      const decodedRedirect = new URL(authorizationUrl).searchParams.get('redirect_uri');
+      console.log('Spotify authorization URL (full):', authorizationUrl);
+      console.log('Spotify redirect_uri decoded from URL:', JSON.stringify(decodedRedirect));
+    }
+
+    return authorizationUrl;
   },
 
   async handleCallback(
@@ -233,7 +280,13 @@ export const oauthService = {
   ): Promise<{ platform: Platform }> {
     verifyOAuthState(state);
     const tokens = await exchangeCode(platform, code);
-    await upsertPlatformToken(platform, tokens.accessToken, tokens.refreshToken, tokens.expiresAt);
+    await upsertPlatformToken(
+      platform,
+      tokens.accessToken,
+      tokens.refreshToken,
+      tokens.expiresAt,
+      tokens.scope,
+    );
     return { platform };
   },
 
@@ -267,7 +320,12 @@ export const oauthService = {
   },
 
   getFrontendRedirect(status: 'success' | 'error', platform: Platform, message?: string): string {
-    const base = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const base = (process.env.FRONTEND_URL || 'http://localhost:3000').trim().replace(/\/$/, '');
+    if (platform === 'spotify' || platform === 'youtube') {
+      const params = new URLSearchParams({ oauth_status: status, tab: platform });
+      if (message) params.set('message', message);
+      return `${base}/parametres?${params}`;
+    }
     const params = new URLSearchParams({ status, platform });
     if (message) params.set('message', message);
     return `${base}/integrations?${params}`;

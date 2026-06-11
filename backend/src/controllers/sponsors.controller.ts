@@ -91,8 +91,10 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 export async function update(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const body = sponsorUpdateSchema.parse(req.body);
+    const episodeIds = body.episodeIds ?? (body.episodeId ? [body.episodeId] : undefined);
     const sponsor = await sponsorsService.updateSponsor(Number(req.params.id), {
       ...body,
+      episodeIds,
       email: body.email || undefined,
       logoUrl: body.logoUrl || null,
       websiteUrl: body.websiteUrl || null,

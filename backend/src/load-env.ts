@@ -16,6 +16,9 @@ function parseEnvFile(envPath: string) {
       (val.startsWith("'") && val.endsWith("'"))
     ) {
       val = val.slice(1, -1);
+    } else {
+      const hash = val.indexOf('#');
+      if (hash >= 0) val = val.slice(0, hash).trim();
     }
     if (process.env[key] === undefined) process.env[key] = val;
   }

@@ -1,3 +1,4 @@
+import { episodeSponsorRelationsIncludeAllContracts } from '../lib/episode-includes';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { GuestLanguage } from '@prisma/client';
@@ -37,15 +38,7 @@ export async function listGuests(filters?: { stageId?: number; search?: string }
       episode: {
         include: {
           shorts: true,
-          sponsors: true,
-          contractEpisodes: {
-            where: { contract: { deletedAt: null } },
-            include: {
-              contract: {
-                include: { sponsor: true },
-              },
-            },
-          },
+          ...episodeSponsorRelationsIncludeAllContracts,
         },
       },
       interactions: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -64,15 +57,7 @@ export async function getGuestById(id: number) {
       episode: {
         include: {
           shorts: true,
-          sponsors: true,
-          contractEpisodes: {
-            where: { contract: { deletedAt: null } },
-            include: {
-              contract: {
-                include: { sponsor: true },
-              },
-            },
-          },
+          ...episodeSponsorRelationsIncludeAllContracts,
         },
       },
       tasks: true,
@@ -172,15 +157,7 @@ export async function updateGuest(
       episode: {
         include: {
           shorts: true,
-          sponsors: true,
-          contractEpisodes: {
-            where: { contract: { deletedAt: null } },
-            include: {
-              contract: {
-                include: { sponsor: true },
-              },
-            },
-          },
+          ...episodeSponsorRelationsIncludeAllContracts,
         },
       },
       interactions: { orderBy: { createdAt: 'desc' } },

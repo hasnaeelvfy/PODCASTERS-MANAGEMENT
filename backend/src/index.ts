@@ -22,7 +22,7 @@ function getLanAddresses(): string[] {
 }
 
 app.listen(PORT, HOST, () => {
-  console.log(`Prodcasters API running on http://localhost:${PORT}`);
+  console.log(`Prodcasters API running on http://127.0.0.1:${PORT} (and http://localhost:${PORT})`);
   const lan = process.env.LAN_IP || getLanAddresses()[0];
   if (lan) {
     console.log(`  LAN: http://${lan}:${PORT} (phone on same WiFi)`);

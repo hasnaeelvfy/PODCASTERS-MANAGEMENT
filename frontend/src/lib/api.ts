@@ -70,6 +70,7 @@ async function request<T>(path: string, options: RequestInit = {}, retried = fal
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as {
       error?: string;
+      message?: string;
       details?: Record<string, string[] | undefined>;
       conflict?: import('@/types').SponsorConflictDetails;
     };
@@ -78,7 +79,7 @@ async function request<T>(path: string, options: RequestInit = {}, retried = fal
       : undefined;
     throw new ApiError(
       res.status,
-      detailMsg || body.error || res.statusText,
+      detailMsg || body.message || body.error || res.statusText,
       body.conflict,
     );
   }
@@ -219,6 +220,17 @@ export const api = {
       request<{ contract: import('@/types').SponsorContract | null }>(
         `/sponsor-contracts/episodes/${episodeId}/active-sponsor`,
       ),
+    checkConflicts: (data: {
+      episodeIds: number[];
+      startDate: string;
+      endDate?: string | null;
+      excludeContractId?: number;
+      contractType?: string;
+    }) =>
+      request<{ conflicts: import('@/types').EpisodeConflictInfo[] }>(
+        '/sponsor-contracts/check-conflicts',
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
     youtubeLogs: (params?: { page?: number; limit?: number }) => {
       const q = new URLSearchParams();
       if (params?.page) q.set('page', String(params.page));
@@ -253,6 +265,43 @@ export const api = {
         body: JSON.stringify(data),
       }),
     stats: (id: number) => request<Record<string, unknown>>(`/youtube/stats/${id}`),
+  },
+  spotify: {
+    connect: () =>
+      request<{ authorizationUrl: string; redirectUri?: string }>(
+        '/analytics/oauth/spotify/connect',
+      ),
+    status: () =>
+      request<{
+        ok: boolean;
+        connected: boolean;
+        oauthConfigured: boolean;
+        message: string;
+        redirectUri: string;
+        lastSync?: string | null;
+        lastError?: string | null;
+      }>('/spotify/status'),
+    syncAll: () =>
+      request<{ synced: number; failed: number; total: number; skipped?: boolean; message?: string }>(
+        '/spotify/sync-all',
+        { method: 'POST' },
+      ),
+    syncEpisode: (id: number, spotifyEpisodeUrl?: string) =>
+      request<{
+        success: boolean;
+        manualFallback?: boolean;
+        message?: string;
+        episode?: import('@/types').Episode;
+        stats?: import('@/types').Episode;
+      }>(`/spotify/sync/${id}`, {
+        method: 'POST',
+        body: JSON.stringify(spotifyEpisodeUrl ? { spotifyEpisodeUrl } : {}),
+      }),
+    syncOnSave: (data: { spotifyUrl: string; episodeId: number }) =>
+      request<{ success: boolean; stats: unknown; manualFallback?: boolean; message?: string }>(
+        '/spotify/sync-on-save',
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
   },
   settings: {
     get: () => request<Record<string, string>>('/settings'),

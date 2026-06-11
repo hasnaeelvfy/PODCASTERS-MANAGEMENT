@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Youtube, Music, Settings, Bell, Users, Shield, Eye, EyeOff, RefreshCw, Lock } from 'lucide-react';
@@ -9,6 +10,7 @@ import { Input, Textarea } from '@/components/ui/Input';
 import { GlowButton } from '@/components/ui/GlowButton';
 import { api } from '@/lib/api';
 import { useToast } from '@/contexts/ToastContext';
+import { useConfirm } from '@/hooks/useConfirm';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { avatarColorFromName, userInitials } from '@/lib/utils';
@@ -114,7 +116,8 @@ function UserRow({
   );
 }
 
-export default function ParametresPage() {
+function ParametresPageContent() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<TabId>('youtube');
   const [showKey, setShowKey] = useState(false);
   const [youtubeKey, setYoutubeKey] = useState('');
@@ -133,6 +136,7 @@ export default function ParametresPage() {
   const [notificationError, setNotificationError] = useState('');
   const toast = useToast();
   const qc = useQueryClient();
+  const { confirm, ConfirmModalComponent } = useConfirm();
   const { user: currentUser } = useAuth();
   const { canManageUsers, canEdit } = usePermissions();
 
@@ -189,6 +193,101 @@ export default function ParametresPage() {
     onSuccess: (r) => toast.success(`${r.synced}/${r.total} épisodes synchronisés`),
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const { data: connectionsData, refetch: refetchConnections } = useQuery({
+    queryKey: ['platform-connections'],
+    queryFn: () => api.analytics.connections(),
+    enabled: tab === 'youtube',
+  });
+  const youtubeConn = connectionsData?.connections.find((c) => c.platform === 'youtube');
+
+  const handleConnectYoutube = async () => {
+    try {
+      const { authorizationUrl } = await api.analytics.connect('youtube');
+      window.location.href = authorizationUrl;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Impossible de lancer la connexion YouTube');
+    }
+  };
+
+  const disconnectYoutube = useMutation({
+    mutationFn: () => api.analytics.disconnect('youtube'),
+    onSuccess: () => {
+      refetchConnections();
+      qc.invalidateQueries({ queryKey: ['platform-connections'] });
+      toast.success('YouTube disconnected successfully');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const handleDisconnectYoutube = async () => {
+    const ok = await confirm({
+      title: 'Déconnecter YouTube',
+      message:
+        'Are you sure you want to disconnect YouTube ? La connexion OAuth (token et scope) sera supprimée. Une reconnexion redemandera votre consentement Google.',
+      confirmText: 'Déconnecter',
+      cancelText: 'Annuler',
+      variant: 'danger',
+    });
+    if (ok) disconnectYoutube.mutate();
+  };
+
+  const { data: spotifyStatus, refetch: refetchSpotifyStatus } = useQuery({
+    queryKey: ['spotify-status'],
+    queryFn: () => api.spotify.status(),
+    enabled: tab === 'spotify',
+  });
+
+  const syncSpotify = useMutation({
+    mutationFn: () => api.spotify.syncAll(),
+    onSuccess: (r) => {
+      if (r.skipped) toast.error(r.message || 'Spotify non connecté');
+      else toast.success(`${r.synced}/${r.total} épisodes synchronisés`);
+      refetchSpotifyStatus();
+      qc.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const disconnectSpotify = useMutation({
+    mutationFn: () => api.analytics.disconnect('spotify'),
+    onSuccess: () => {
+      refetchSpotifyStatus();
+      toast.success('Spotify déconnecté');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const handleConnectSpotify = async () => {
+    try {
+      const { authorizationUrl } = await api.spotify.connect();
+      window.location.href = authorizationUrl;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Impossible de lancer la connexion Spotify');
+    }
+  };
+
+  useEffect(() => {
+    const oauthStatus = searchParams.get('oauth_status');
+    const tabParam = searchParams.get('tab');
+    if (!oauthStatus) return;
+
+    if (tabParam === 'spotify') {
+      setTab('spotify');
+      const msg = searchParams.get('message');
+      if (oauthStatus === 'success') toast.success('Spotify for Creators connecté');
+      else toast.error(msg || 'Échec de la connexion Spotify');
+      refetchSpotifyStatus();
+      window.history.replaceState({}, '', '/parametres');
+    } else if (tabParam === 'youtube') {
+      setTab('youtube');
+      const msg = searchParams.get('message');
+      if (oauthStatus === 'success') toast.success('YouTube connecté');
+      else toast.error(msg || 'Échec de la connexion YouTube');
+      refetchConnections();
+      window.history.replaceState({}, '', '/parametres');
+    }
+  }, [searchParams, toast, refetchSpotifyStatus, refetchConnections]);
 
   const roleMutation = useMutation({
     mutationFn: ({ id, role }: { id: number; role: string }) => api.users.updateRole(id, role),
@@ -324,19 +423,135 @@ export default function ParametresPage() {
                     )}
                   </div>
                   {s.youtube_last_sync && <p className="text-xs text-[var(--text-muted)]">Dernière sync : {new Date(s.youtube_last_sync).toLocaleString('fr-FR')}</p>}
+
+                  <div className="pt-5 border-t border-[var(--border-subtle)] space-y-4">
+                    <div>
+                      <h3 className="text-sm font-bold">Connexion OAuth (écriture)</h3>
+                      <p className="text-xs text-[var(--text-muted)] leading-relaxed mt-1">
+                        Requise pour mettre à jour automatiquement les descriptions sponsor et épingler des commentaires
+                        (scope <span className="font-mono">youtube.force-ssl</span>).
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                          youtubeConn?.connected
+                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25'
+                            : 'bg-white/[0.04] text-[var(--text-muted)] border border-white/10'
+                        }`}
+                      >
+                        {youtubeConn?.connected ? 'Connecté' : 'Non connecté'}
+                      </span>
+                      {youtubeConn && !youtubeConn.oauthConfigured && (
+                        <span className="text-xs text-amber-400">Clés OAuth manquantes dans .env</span>
+                      )}
+                    </div>
+
+                    {canEdit && (
+                      <div className="flex flex-col md:flex-row gap-3 min-w-0">
+                        <GlowButton
+                          className="w-full md:w-auto min-h-[48px] md:min-h-0 justify-center"
+                          onClick={handleConnectYoutube}
+                          disabled={youtubeConn ? !youtubeConn.oauthConfigured : false}
+                        >
+                          {youtubeConn?.connected ? 'Reconnecter YouTube' : 'Connecter YouTube'}
+                        </GlowButton>
+                        {youtubeConn?.connected && (
+                          <button
+                            type="button"
+                            className="btn-secondary w-full md:w-auto min-h-[48px] md:min-h-0 justify-center"
+                            onClick={handleDisconnectYoutube}
+                            disabled={disconnectYoutube.isPending}
+                          >
+                            {disconnectYoutube.isPending ? 'Déconnexion...' : 'Déconnecter YouTube'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {youtubeConn?.lastSyncError && (
+                      <p className="text-xs text-amber-400">{youtubeConn.lastSyncError}</p>
+                    )}
+                  </div>
                 </div>
               )}
 
               {tab === 'spotify' && (
-                <div className="space-y-4">
-                  <h2 className="text-lg font-bold">Spotify</h2>
+                <div className="space-y-5">
+                  <h2 className="text-lg font-bold">Spotify for Creators</h2>
                   <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-                    Les écoutes Spotify ne sont pas disponibles via une API publique gratuite.
-                    Saisissez-les manuellement dans chaque fiche épisode.
+                    Connectez votre compte pour synchroniser automatiquement les écoutes et le taux de complétion
+                    de chaque épisode. Sans connexion OAuth, la saisie manuelle reste disponible.
                   </p>
-                  <Input label="Lien chaîne Spotify" placeholder="https://open.spotify.com/show/..."
+
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                        spotifyStatus?.connected
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25'
+                          : 'bg-white/[0.04] text-[var(--text-muted)] border border-white/10'
+                      }`}
+                    >
+                      {spotifyStatus?.connected ? 'Connecté' : 'Non connecté'}
+                    </span>
+                    {spotifyStatus && !spotifyStatus.oauthConfigured && (
+                      <span className="text-xs text-amber-400">Clés OAuth manquantes dans .env</span>
+                    )}
+                  </div>
+
+                  {canEdit && (
+                    <div className="flex flex-col md:flex-row gap-3 min-w-0">
+                      <GlowButton
+                        className="w-full md:w-auto min-h-[48px] md:min-h-0 justify-center"
+                        onClick={handleConnectSpotify}
+                        disabled={!spotifyStatus?.oauthConfigured}
+                      >
+                        {spotifyStatus?.connected ? 'Reconnecter Spotify' : 'Connecter Spotify'}
+                      </GlowButton>
+                      {spotifyStatus?.connected && (
+                        <button
+                          type="button"
+                          className="btn-secondary w-full md:w-auto min-h-[48px] md:min-h-0 justify-center"
+                          onClick={() => disconnectSpotify.mutate()}
+                          disabled={disconnectSpotify.isPending}
+                        >
+                          Déconnecter
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-secondary w-full md:w-auto min-h-[48px] md:min-h-0 justify-center"
+                        onClick={() => syncSpotify.mutate()}
+                        disabled={syncSpotify.isPending || !spotifyStatus?.connected}
+                      >
+                        <RefreshCw className={`w-3 h-3 ${syncSpotify.isPending ? 'animate-spin' : ''}`} />
+                        Synchroniser tous les épisodes
+                      </button>
+                    </div>
+                  )}
+
+                  {spotifyStatus?.redirectUri && (
+                    <p className="text-xs text-[var(--text-muted)] font-mono break-all">
+                      redirect_uri utilisé : {spotifyStatus.redirectUri}
+                    </p>
+                  )}
+                  {spotifyStatus?.lastError && (
+                    <p className="text-xs text-amber-400">{spotifyStatus.lastError}</p>
+                  )}
+                  {(s.spotify_last_sync || spotifyStatus?.lastSync) && (
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Dernière sync :{' '}
+                      {new Date(s.spotify_last_sync || spotifyStatus!.lastSync!).toLocaleString('fr-FR')}
+                    </p>
+                  )}
+
+                  <Input
+                    label="Lien chaîne Spotify"
+                    placeholder="https://open.spotify.com/show/..."
                     defaultValue={s.spotify_channel_url || ''}
-                    onChange={(e) => setForm({ ...form, spotify_channel_url: e.target.value })} />
+                    onChange={(e) => setForm({ ...form, spotify_channel_url: e.target.value })}
+                  />
                 </div>
               )}
 
@@ -488,6 +703,15 @@ export default function ParametresPage() {
           )}
         </div>
       </div>
+      <ConfirmModalComponent />
     </motion.div>
+  );
+}
+
+export default function ParametresPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-[var(--text-muted)]">Chargement...</div>}>
+      <ParametresPageContent />
+    </Suspense>
   );
 }

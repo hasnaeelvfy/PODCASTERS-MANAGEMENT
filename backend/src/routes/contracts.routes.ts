@@ -10,6 +10,7 @@ router.get('/dashboard-stats', contractsController.dashboardStats);
 router.get('/youtube-logs', contractsController.listLogs);
 router.post('/youtube-logs/:videoId/rollback', contractsController.rollback);
 router.get('/episodes/:episodeId/active-sponsor', contractsController.activeForEpisode);
+router.post('/check-conflicts', contractsController.checkConflicts);
 
 router.get('/', contractsController.list);
 router.post('/', contractsController.create);

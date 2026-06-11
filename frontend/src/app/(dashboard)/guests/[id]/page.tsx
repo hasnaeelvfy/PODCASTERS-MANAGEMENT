@@ -18,6 +18,10 @@ import type { Episode, Guest } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePermissions } from '@/hooks/usePermissions';
 import { CONTRACT_STATUS_LABELS, CONTRACT_TYPE_LABELS } from '@/lib/sponsor-utils';
+import { SponsorModal, type SponsorFormData } from '@/components/sponsors/SponsorModal';
+import { SponsorConflictModal } from '@/components/sponsors/SponsorConflictModal';
+import { useToast } from '@/contexts/ToastContext';
+import type { SponsorConflictDetails } from '@/types';
 import {
   initials,
   formatDateTime,
@@ -148,24 +152,26 @@ export default function GuestDetailPage({ params }: { params: Promise<{ id: stri
               <span className="text-sm text-white/50">{stage?.name}</span>
             )}
             {(canEdit || canDelete) && (
-              <div className="flex items-center justify-start md:justify-end gap-2 w-full md:w-auto md:ml-auto shrink-0">
-                {canEdit && (
-                  <Link href={`/guests/${guestId}/edit`} className="inline-flex">
-                    <GlowButton variant="ghost" size="sm" className="!h-9 !min-h-[36px] px-3">
+              <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-auto md:ml-auto shrink-0">
+                {canEdit ? (
+                  <Link href={`/guests/${guestId}/edit`} className="inline-flex shrink-0">
+                    <GlowButton variant="ghost" size="sm" className="!h-10 !min-h-[40px] px-4 text-sm font-medium">
                       Modifier
                     </GlowButton>
                   </Link>
+                ) : (
+                  <span className="md:hidden" aria-hidden />
                 )}
                 {canDelete && (
                   <GlowButton
-                    variant="danger"
+                    variant="ghost"
                     size="sm"
-                    className="!h-9 !min-h-[36px] px-3 md:!w-9 md:!min-w-[36px] md:!p-0 inline-flex items-center justify-center gap-1.5 shrink-0"
+                    className="!h-10 !min-h-[40px] shrink-0 inline-flex items-center justify-center gap-2 px-4 md:px-0 md:!w-10 md:!min-w-[40px] text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 rounded-lg normal-case tracking-normal font-medium"
                     onClick={handleDeleteGuest}
                     aria-label="Supprimer l'invité"
                   >
+                    <Trash2 className="w-4 h-4 shrink-0" />
                     <span className="md:hidden">Supprimer</span>
-                    <Trash2 className="w-4 h-4 hidden md:block" />
                   </GlowButton>
                 )}
               </div>
@@ -409,6 +415,29 @@ function mergeEpisodeYoutubeStats(guest: Guest | undefined, synced: Episode): Gu
   };
 }
 
+function mergeEpisodeSpotifyStats(guest: Guest | undefined, synced: Episode): Guest | undefined {
+  if (!guest?.episode) return guest;
+  return {
+    ...guest,
+    episode: {
+      ...guest.episode,
+      spotifyEpisodeUrl: synced.spotifyEpisodeUrl ?? guest.episode.spotifyEpisodeUrl,
+      spotifyEpisodeId: synced.spotifyEpisodeId ?? guest.episode.spotifyEpisodeId,
+      listens: synced.listens ?? guest.episode.listens,
+      completionRate: synced.completionRate ?? guest.episode.completionRate,
+      lastSpotifySync: synced.lastSpotifySync ?? guest.episode.lastSpotifySync,
+    },
+  };
+}
+
+function spotifySyncErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    return err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return 'Impossible de récupérer les stats Spotify';
+}
+
 function MetricsFields({
   ep,
   guestId,
@@ -424,12 +453,17 @@ function MetricsFields({
     publicationDate?: string | null;
     youtubeEpisodeUrl?: string | null;
     spotifyEpisodeUrl?: string | null;
+    lastSpotifySync?: string | null;
   };
   guestId: number;
   canEdit: boolean;
   onSave: (d: Record<string, unknown>) => Promise<unknown>;
 }) {
   const qc = useQueryClient();
+  const { data: spotifyStatus } = useQuery({
+    queryKey: ['spotify-status'],
+    queryFn: () => api.spotify.status(),
+  });
   const [form, setForm] = useState({
     listens: ep.listens,
     completion: ep.completionRate?.toString() || '',
@@ -441,14 +475,23 @@ function MetricsFields({
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [loadingViews, setLoadingViews] = useState(false);
+  const [loadingSpotify, setLoadingSpotify] = useState(false);
   const [viewsWarning, setViewsWarning] = useState(false);
+  const [spotifyWarning, setSpotifyWarning] = useState(false);
   const [displayViews, setDisplayViews] = useState(ep.youtubeViews ?? 0);
   const [displayShares, setDisplayShares] = useState(ep.shares ?? 0);
+  const [displayListens, setDisplayListens] = useState(ep.listens ?? 0);
+  const [displayCompletion, setDisplayCompletion] = useState(ep.completionRate?.toString() || '');
+
+  const spotifySynced = !!ep.lastSpotifySync && !spotifyWarning;
+  const spotifyReadonly = !!(spotifyStatus?.connected && spotifySynced);
 
   useEffect(() => {
     setDisplayViews(ep.youtubeViews ?? 0);
     setDisplayShares(ep.shares ?? 0);
-  }, [ep.youtubeViews, ep.shares]);
+    setDisplayListens(ep.listens ?? 0);
+    setDisplayCompletion(ep.completionRate?.toString() || '');
+  }, [ep.youtubeViews, ep.shares, ep.listens, ep.completionRate]);
 
   const syncYoutubeStats = useCallback(async () => {
     const url = form.youtubeEpisodeUrl.trim() || ep.youtubeEpisodeUrl || '';
@@ -498,6 +541,56 @@ function MetricsFields({
     }
   }, [ep.id, ep.youtubeEpisodeUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const syncSpotifyStats = useCallback(async () => {
+    const url = form.spotifyEpisodeUrl.trim() || ep.spotifyEpisodeUrl || '';
+    if (!url || !spotifyStatus?.connected) {
+      setSpotifyWarning(false);
+      return null;
+    }
+
+    setLoadingSpotify(true);
+    setSpotifyWarning(false);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.spotifyEpisodeUrl;
+      return next;
+    });
+
+    try {
+      const url = form.spotifyEpisodeUrl.trim() || ep.spotifyEpisodeUrl || '';
+      const result = await api.spotify.syncEpisode(ep.id, url || undefined);
+      const synced = result.episode ?? result.stats;
+      if (synced) {
+        setDisplayListens(synced.listens ?? 0);
+        setDisplayCompletion(synced.completionRate?.toString() || '');
+        setForm((prev) => ({
+          ...prev,
+          listens: synced.listens ?? prev.listens,
+          completion: synced.completionRate?.toString() || prev.completion,
+        }));
+        qc.setQueryData<Guest>(['guest', guestId], (old) => mergeEpisodeSpotifyStats(old, synced));
+      }
+      await qc.invalidateQueries({ queryKey: ['guest', guestId] });
+      await qc.invalidateQueries({ queryKey: ['dashboard'] });
+      return synced;
+    } catch (err) {
+      setSpotifyWarning(true);
+      setErrors((prev) => ({
+        ...prev,
+        spotifyEpisodeUrl: spotifySyncErrorMessage(err),
+      }));
+      return null;
+    } finally {
+      setLoadingSpotify(false);
+    }
+  }, [ep.id, ep.spotifyEpisodeUrl, form.spotifyEpisodeUrl, guestId, qc, spotifyStatus?.connected]);
+
+  useEffect(() => {
+    if (ep.spotifyEpisodeUrl && spotifyStatus?.connected) {
+      syncSpotifyStats();
+    }
+  }, [ep.id, ep.spotifyEpisodeUrl, spotifyStatus?.connected]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSave = async () => {
     const newErrors: Record<string, string> = {};
     if (form.listens < 0) newErrors.listens = 'Valeur minimale : 0';
@@ -540,6 +633,10 @@ function MetricsFields({
         setViewsWarning(false);
       }
 
+      if (form.spotifyEpisodeUrl.trim() && spotifyStatus?.connected) {
+        await syncSpotifyStats();
+      }
+
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
@@ -553,16 +650,32 @@ function MetricsFields({
   return (
     <div className="space-y-3 mobile-page-pad-form">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Input
-          label="Écoutes (Spotify)"
-          type="number"
-          min={0}
-          step={1}
-          value={form.listens}
-          disabled={!canEdit}
-          error={errors.listens}
-          onChange={(e) => setForm({ ...form, listens: parseNonNegativeInt(e.target.value) })}
-        />
+        {spotifyReadonly ? (
+          <div className="flex flex-col">
+            <label className="input-label">Écoutes (Spotify)</label>
+            <div className="relative">
+              <input
+                className="input-base bg-white/[0.03] cursor-default text-[var(--text-primary)]"
+                readOnly
+                value={formatNumber(displayListens)}
+              />
+            </div>
+            <p className="text-[10px] text-white/35 mt-1">
+              Récupéré automatiquement via Spotify for Creators
+            </p>
+          </div>
+        ) : (
+          <Input
+            label="Écoutes (Spotify)"
+            type="number"
+            min={0}
+            step={1}
+            value={form.listens}
+            disabled={!canEdit || loadingSpotify}
+            error={errors.listens}
+            onChange={(e) => setForm({ ...form, listens: parseNonNegativeInt(e.target.value) })}
+          />
+        )}
         <div className="flex flex-col">
           <label className="input-label">Vues YouTube</label>
           <div className="relative">
@@ -598,27 +711,53 @@ function MetricsFields({
           </div>
           <p className="text-[10px] text-white/35 mt-1">Récupéré automatiquement via l&apos;API YouTube</p>
         </div>
-        <Input
-          label="Complétion %"
-          type="number"
-          min={0}
-          max={100}
-          step={1}
-          value={form.completion}
-          disabled={!canEdit}
-          error={errors.completion}
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === '') {
-              setForm({ ...form, completion: '' });
-              return;
-            }
-            const n = parseFloat(raw);
-            if (Number.isNaN(n)) return;
-            setForm({ ...form, completion: String(Math.min(100, Math.max(0, n))) });
-          }}
-        />
+        {spotifyReadonly ? (
+          <div className="flex flex-col">
+            <label className="input-label">Complétion %</label>
+            <div className="relative">
+              <input
+                className="input-base bg-white/[0.03] cursor-default text-[var(--text-primary)]"
+                readOnly
+                value={displayCompletion ? `${displayCompletion}%` : '—'}
+              />
+            </div>
+            <p className="text-[10px] text-white/35 mt-1">
+              Récupéré automatiquement via Spotify for Creators
+            </p>
+          </div>
+        ) : (
+          <Input
+            label="Complétion %"
+            type="number"
+            min={0}
+            max={100}
+            step={1}
+            value={form.completion}
+            disabled={!canEdit || loadingSpotify}
+            error={errors.completion}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === '') {
+                setForm({ ...form, completion: '' });
+                return;
+              }
+              const n = parseFloat(raw);
+              if (Number.isNaN(n)) return;
+              setForm({ ...form, completion: String(Math.min(100, Math.max(0, n))) });
+            }}
+          />
+        )}
       </div>
+      {spotifyWarning && (
+        <p className="text-xs text-amber-400">
+          Sync Spotify indisponible — saisie manuelle activée
+        </p>
+      )}
+      {ep.lastSpotifySync && (
+        <p className="text-[10px] text-white/35">
+          Dernière sync Spotify : {new Date(ep.lastSpotifySync).toLocaleString('fr-FR')}
+        </p>
+      )}
       <Input
         label="Date publication"
         type="date"
@@ -644,16 +783,36 @@ function MetricsFields({
         onChange={(e) => setForm({ ...form, spotifyEpisodeUrl: e.target.value })}
         error={errors.spotifyEpisodeUrl}
       />
+      {canEdit && spotifyStatus?.connected && form.spotifyEpisodeUrl.trim() && (
+        <div className="flex justify-end">
+          <GlowButton
+            size="sm"
+            variant="secondary"
+            onClick={() => syncSpotifyStats()}
+            disabled={loadingSpotify || syncing}
+          >
+            {loadingSpotify ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" /> Sync Spotify…
+              </>
+            ) : (
+              'Synchroniser Spotify'
+            )}
+          </GlowButton>
+        </div>
+      )}
       <div className="hidden md:flex items-center justify-end gap-3 pt-1">
         {errors.submit && (
           <span className="text-xs text-red-400">{errors.submit}</span>
         )}
-        {(syncing || loadingViews) && (
-          <span className="text-xs text-violet-400/80">Sync YouTube…</span>
+        {(syncing || loadingViews || loadingSpotify) && (
+          <span className="text-xs text-violet-400/80">
+            {loadingSpotify ? 'Sync Spotify…' : 'Sync YouTube…'}
+          </span>
         )}
         {saved && <span className="text-xs text-emerald-400">Sauvegardé ✓</span>}
         {canEdit && (
-          <GlowButton size="sm" onClick={handleSave} disabled={syncing || loadingViews}>
+          <GlowButton size="sm" onClick={handleSave} disabled={syncing || loadingViews || loadingSpotify}>
             Sauvegarder
           </GlowButton>
         )}
@@ -664,15 +823,17 @@ function MetricsFields({
           <div className="flex items-center justify-between gap-2 mb-2 min-h-[20px]">
             {errors.submit ? (
               <span className="text-xs text-red-400 truncate">{errors.submit}</span>
-            ) : (syncing || loadingViews) ? (
-              <span className="text-xs text-violet-400/80">Sync YouTube…</span>
+            ) : (syncing || loadingViews || loadingSpotify) ? (
+              <span className="text-xs text-violet-400/80">
+                {loadingSpotify ? 'Sync Spotify…' : 'Sync YouTube…'}
+              </span>
             ) : saved ? (
               <span className="text-xs text-emerald-400">Sauvegardé ✓</span>
             ) : (
               <span className="text-[10px] text-[var(--text-dimmed)]">Métriques & URLs</span>
             )}
           </div>
-          <GlowButton className="w-full min-h-[48px]" onClick={handleSave} disabled={syncing || loadingViews}>
+          <GlowButton className="w-full min-h-[48px]" onClick={handleSave} disabled={syncing || loadingViews || loadingSpotify}>
             Sauvegarder
           </GlowButton>
         </div>
@@ -981,6 +1142,7 @@ function SponsorsPanel({
   mobileAccordion?: boolean;
 }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const { canCreate } = usePermissions();
   const contractRows = contractEpisodes
     .map((l) => l.contract)
@@ -989,56 +1151,58 @@ function SponsorsPanel({
   const legacyTotal = sponsors.reduce((s, x) => s + Number(x.amount), 0);
   const total = contractRows.length > 0 ? contractTotal : legacyTotal;
   const hasAny = sponsors.length > 0 || contractRows.length > 0;
-  const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [form, setForm] = useState({
-    name: '',
-    amount: '',
-    status: 'prospect',
-    contactName: '',
-    email: '',
-    phone: '',
-    notes: '',
+  const [modalOpen, setModalOpen] = useState(false);
+  const [conflict, setConflict] = useState<SponsorConflictDetails | null>(null);
+
+  const { data: episodes = [] } = useQuery({
+    queryKey: ['episodes'],
+    queryFn: () => api.episodes.list(),
+    enabled: modalOpen,
   });
 
-  const resetForm = () => {
-    setForm({ name: '', amount: '', status: 'prospect', contactName: '', email: '', phone: '', notes: '' });
-    setErrors({});
-  };
-
-  const handleSubmit = async () => {
-    const newErrors: Record<string, string> = {};
-    if (!form.name.trim()) newErrors.name = 'Le nom est requis';
-    if (!form.amount || Number(form.amount) < 0) newErrors.amount = 'Montant invalide';
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      newErrors.email = 'Email invalide';
-    }
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setLoading(true);
-    setErrors({});
-    try {
-      await api.sponsors.create({
-        episodeId,
-        name: form.name.trim(),
-        amount: Number(form.amount),
-        status: form.status,
-        contactName: form.contactName.trim() || undefined,
-        email: form.email.trim() || undefined,
-        phone: form.phone.trim() || undefined,
-        notes: form.notes.trim() || undefined,
-      });
+  const createMutation = useMutation({
+    mutationFn: (d: SponsorFormData) => api.sponsors.create({
+      episodeId: d.episodeIds[0] || d.episodeId || episodeId,
+      episodeIds: d.episodeIds.length ? d.episodeIds : [episodeId],
+      name: d.name,
+      contactName: d.contactName || undefined,
+      email: d.email || undefined,
+      phone: d.phone || undefined,
+      sponsorType: d.sponsorType,
+      contractType: d.contractType || 'per_episode',
+      amount: Number(d.amount),
+      status: d.status,
+      startDate: d.startDate || undefined,
+      endDate: d.endDate || undefined,
+      isRecurring: d.isRecurring,
+      notes: d.notes || undefined,
+      trackingUrl: d.trackingUrl || undefined,
+      promoMessage: d.promoMessage || undefined,
+      autoUpdateYoutube: d.autoUpdateYoutube,
+    }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['guest', guestId] });
-      resetForm();
-      setShowForm(false);
-    } catch (err) {
-      setErrors({ submit: err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement' });
-    } finally {
-      setLoading(false);
+      qc.invalidateQueries({ queryKey: ['sponsors'] });
+      qc.invalidateQueries({ queryKey: ['sponsor-stats'] });
+      qc.invalidateQueries({ queryKey: ['episodes'] });
+      toast.success('Sponsor créé');
+      setModalOpen(false);
+    },
+    onError: (e: Error) => {
+      if (e instanceof ApiError && e.status === 409 && e.conflict) return;
+      toast.error(e.message);
+    },
+  });
+
+  const handleSubmit = async (form: SponsorFormData) => {
+    try {
+      await createMutation.mutateAsync(form);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.conflict) {
+        setConflict(e.conflict);
+        return;
+      }
+      throw e;
     }
   };
 
@@ -1054,7 +1218,7 @@ function SponsorsPanel({
 
   const panelBody = (
     <>
-      {!hasAny && !showForm && (
+      {!hasAny && !modalOpen && (
         <p className="text-sm text-[var(--text-muted)] py-2 mb-2">Aucun sponsor enregistré.</p>
       )}
 
@@ -1101,78 +1265,24 @@ function SponsorsPanel({
         ))}
       </div>
 
-      {showForm ? (
-        <div className="card p-4 space-y-3 border border-cyan-400/20">
-          <h4 className="text-sm font-semibold text-cyan-300">Nouveau sponsor</h4>
-          <Input
-            label="Nom du sponsor *"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            error={errors.name}
-          />
-          <Input
-            label="Montant (MAD) *"
-            type="number"
-            min="0"
-            value={form.amount}
-            onChange={(e) => setForm({ ...form, amount: e.target.value })}
-            error={errors.amount}
-          />
-          <Select
-            label="Statut *"
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value })}
-          >
-            <option value="prospect">Prospect</option>
-            <option value="contacte">Contacté</option>
-            <option value="nego">En négociation</option>
-            <option value="confirme">Confirmé</option>
-            <option value="refuse">Refusé</option>
-            <option value="partenaire_recurrent">Partenaire récurrent</option>
-          </Select>
-          <Input
-            label="Nom du contact"
-            value={form.contactName}
-            onChange={(e) => setForm({ ...form, contactName: e.target.value })}
-          />
-          <Input
-            label="Email"
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            error={errors.email}
-          />
-          <Input
-            label="Téléphone"
-            type="tel"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          />
-          <Textarea
-            label="Notes"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            rows={3}
-          />
-          {errors.submit && <p className="text-xs text-red-400">{errors.submit}</p>}
-          <div className="flex gap-2 pt-1">
-            <GlowButton size="sm" className="flex-1" onClick={handleSubmit} disabled={loading}>
-              {loading ? 'Enregistrement...' : 'Enregistrer'}
-            </GlowButton>
-            <GlowButton
-              size="sm"
-              variant="ghost"
-              onClick={() => { setShowForm(false); resetForm(); }}
-            >
-              Annuler
-            </GlowButton>
-          </div>
-        </div>
-      ) : canCreate ? (
-        <GlowButton size="sm" className="w-full min-h-[48px]" onClick={() => setShowForm(true)}>
+      {canCreate ? (
+        <GlowButton size="sm" className="w-full min-h-[48px]" onClick={() => setModalOpen(true)}>
           + Ajouter sponsor
         </GlowButton>
       ) : null}
+
+      <SponsorModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSubmit={handleSubmit}
+        episodes={episodes}
+        fixedEpisodeId={episodeId}
+      />
+      <SponsorConflictModal
+        open={!!conflict}
+        conflict={conflict}
+        onClose={() => setConflict(null)}
+      />
     </>
   );
 
